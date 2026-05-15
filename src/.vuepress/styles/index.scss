@@ -5,10 +5,22 @@
   }
 }
 
-// 确保粗体中文也能清晰显示
+// 确保粗体中文/日文也能清晰显示
+// CJK 字体通常没有真正的 bold 变体，font-weight: 700 会回退到常规字重。
+// 解决方案：用 text-shadow 模拟加粗效果，配合颜色差异双保险。
 strong {
   font-weight: 700;
-  color: #1a1a1a;
+  color: #111;
+  // text-shadow 向右偏移，模拟笔画加粗，解决 CJK 字体无 bold 变体问题
+  // 原理：在文字右侧 0.5px 处叠加一层同色文字，视觉上笔画变粗
+  text-shadow: 0.5px 0 0 currentColor;
+}
+
+// 暗色模式下同样需要明显区分
+[data-theme="dark"] strong {
+  color: #f0f0f0;
+  font-weight: 700;
+  text-shadow: 0.5px 0 0 currentColor;
 }
 
 .posts-expand .post-title-link {
