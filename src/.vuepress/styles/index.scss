@@ -5,6 +5,12 @@
   }
 }
 
+// 确保粗体中文也能清晰显示
+strong {
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
 .posts-expand .post-title-link {
   color: #F5DEB3;
 }

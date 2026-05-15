@@ -31,7 +31,7 @@ mathjax: true
     - 定理：$\forall n \in \mathbb{N}.\; P(n)$
     - 方法：证明 $P(0)$，以及对于每个 $n \geq 0$，$P(n) \Rightarrow P(n+1)$
 
-::: note 这么多证明方法，该用哪个？
+::: tip
 
 现在你手上有六七种证明方法了。面对一个定理，该选哪个？实用思路：
 

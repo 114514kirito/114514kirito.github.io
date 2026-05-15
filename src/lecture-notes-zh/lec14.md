@@ -8,6 +8,11 @@ mathjax: true
 
 # 第14讲：有向图与DAG（Digraphs and DAGs）
 
+::: tip
+
+有向图在 CS 中的应用几乎无处不在：网页之间的超链接形成有向图（PageRank 算法的基础），代码中的函数调用图是有向图，任务调度中的依赖关系形成 DAG（如 Makefile、CI/CD 流水线）。拓扑排序这个算法，你以后写构建系统时一定会遇到。
+:::
+
 ## 1 有向图中的概念和定理
 
 **定义 1**：一个**有向图（digraph/directed graph）** $G = (V, E)$ 是一组顶点 $V$ 和一组有向边 $E \subseteq V \times V$。
