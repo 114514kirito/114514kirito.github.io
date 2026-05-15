@@ -9,6 +9,16 @@ export default defineUserConfig({
   title: "Yukino's Blog",
   description: "Yukino's Blog",
 
+  head: [
+    [
+      "link",
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Tangerine:wght@400;700&display=swap",
+      },
+    ],
+  ],
+
   theme,
 
   // Enable it with pwa
