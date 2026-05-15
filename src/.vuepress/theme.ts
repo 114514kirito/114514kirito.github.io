@@ -18,8 +18,8 @@ export default hopeTheme({
     url: "https://114514kirito.github.io",
   },
 
-  logo: "/flame.jpg",
-  favicon: "/flame.ico",
+  logo: "/Image_1778813659900_438.jpg",
+  favicon: "/Image_1778813659900_438.jpg",
 
   repo: "114514kirito/114514kirito.github.io",
   repoDisplay: false,
