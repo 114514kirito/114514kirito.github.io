@@ -82,7 +82,7 @@ $$d_n = d_0 + \frac{1}{2}\left(1 + \frac{1}{2} + \frac{1}{3} + \cdots + \frac{1}
 
 ### 2.1 定义与基本性质
 
-**定义 1**：第 $n$ 个**调和数（Harmonic Number）**为 $H_n = \sum_{i=1}^{n} \frac{1}{i}$。
+**定义 1**：第 $n$ 个调和数（Harmonic Number）为 $H_n = \sum_{i=1}^{n} \frac{1}{i}$。
 
 利用这个定义，$d_n = \frac{1}{2}H_n$。计算前几个调和数：
 
@@ -118,7 +118,7 @@ $$\frac{1}{n} + \ln n \leq H_n \leq 1 + \ln n$$
 
 现在上下界的差小于 1！事实上，如果我们简单地用 $\ln n$ 作为 $H_n$ 的近似，误差最多为 1。当 $n$ 趋于无穷时，$\ln n$ 也趋于无穷，因此误差项 1 相比之下变得可以忽略。我们忽略这个误差项，记为 $H_n \sim \ln n$。
 
-**定义 2（波浪号记号，Tilde 记号）**：$f \sim g$（读作「$f$ tilde $g$」）如果 $\lim_{x \to \infty} \frac{f(x)}{g(x)} = 1$。
+定义 2（波浪号记号，Tilde 记号）：$f \sim g$（读作「$f$ tilde $g$」）如果 $\lim_{x \to \infty} \frac{f(x)}{g(x)} = 1$。
 
 Tilde 记号给出了 $f$ 和 $g$「大致相等」的含义；如果我们只关心近似的极限行为，可以安全地忽略 $f$ 和 $g$ 之间的精确差异并将它们视为相同。
 
@@ -210,7 +210,7 @@ Stirling 公式中 $\sqrt{2\pi n}$ 从哪来？它来自对 $\ln n!$ 的更精�
 
 ### 4.1 Big-O：渐进上界
 
-**定义 6（Big-O）**：$f \in O(g)$ 当且仅当
+定义 6（Big-O）：$f \in O(g)$ 当且仅当
 
 $$\exists c \in \mathbb{R}. \; \exists M \in \mathbb{Z}^+. \; \forall x \in \mathbb{Z}^+. \; \big[x > M \Rightarrow |f(x)| \leq c \cdot g(x)\big]$$
 
@@ -229,7 +229,7 @@ $O(g)$ 是渐进上界不超过 $g$ 的函数集合。$c$ 意味着我们不关�
 
 ### 4.2 Little-o：严格的渐进上界
 
-**定义 7（Little-o）**：$f \in o(g)$ 如果 $\lim_{x \to \infty} \frac{f(x)}{g(x)} = 0$。
+定义 7（Little-o）：$f \in o(g)$ 如果 $\lim_{x \to \infty} \frac{f(x)}{g(x)} = 0$。
 
 $o(g)$ 是渐进远小于 $g$ 的函数集合。如果 Big-O 代表非严格不等式 $\leq$，那么 little-o 就是其严格对应，捕获 $<$ 的概念。
 
@@ -244,7 +244,7 @@ $o(g)$ 是渐进远小于 $g$ 的函数集合。如果 Big-O 代表非严格不�
 
 ### 4.3 Big-$\Omega$：渐进下界
 
-**定义 8（Big-$\Omega$）**：$f \in \Omega(g)$ 如果 $g \in O(f)$。
+定义 8（Big-$\Omega$）：$f \in \Omega(g)$ 如果 $g \in O(f)$。
 
 $\Omega(g)$ 是渐进下界不低于 $g$ 的函数集合，代表非严格不等式 $\geq$。注意定义的巧妙：$f$ 渐进不低于 $g$，等价于 $g$ 渐进不超过 $f$。
 
@@ -258,7 +258,7 @@ $\Omega(g)$ 是渐进下界不低于 $g$ 的函数集合，代表非严格不等
 
 ### 4.4 Little-$\omega$：严格的渐进下界
 
-**定义 9（Little-$\omega$）**：$f \in \omega(g)$ 如果 $g \in o(f)$。
+定义 9（Little-$\omega$）：$f \in \omega(g)$ 如果 $g \in o(f)$。
 
 代表严格不等式 $>$。等价刻画为 $\lim_{x \to \infty} \frac{f(x)}{g(x)} = \infty$——直观上，$f$ 不仅不低于 $g$，而且远远超过它。
 

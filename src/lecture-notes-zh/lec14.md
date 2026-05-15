@@ -15,7 +15,7 @@ mathjax: true
 
 ## 1 有向图中的概念和定理
 
-**定义 1**：一个**有向图（digraph/directed graph）** $G = (V, E)$ 是一组顶点 $V$ 和一组有向边 $E \subseteq V \times V$。
+**定义 1**：一个有向图（digraph/directed graph） $G = (V, E)$ 是一组顶点 $V$ 和一组有向边 $E \subseteq V \times V$。
 
 一条边 $(u, v) \in E$，记为 $u \to v$，表示从 $u$ 到 $v$ 的有向边。与无向图的唯一区别：边是 $(u, v)$（顺序重要）而非 $\{u, v\}$。
 
@@ -28,8 +28,8 @@ mathjax: true
 
 ### 1.1 度数
 
-- **入度（in-degree）** $\deg^-(v)$：指向 $v$ 的边的数量
-- **出度（out-degree）** $\deg^+(v)$：从 $v$ 出发的边的数量
+- 入度（in-degree） $\deg^-(v)$：指向 $v$ 的边的数量
+- 出度（out-degree） $\deg^+(v)$：从 $v$ 出发的边的数量
 
 **握手引理**：$\sum_{v \in V} \deg^-(v) = |E| = \sum_{v \in V} \deg^+(v)$
 
@@ -45,9 +45,9 @@ mathjax: true
 
 ### 1.4 连通性
 
-**定义 2**：$u$ 可以**到达（reach）** $v$，如果存在 $u$-$v$ 漫步。
+**定义 2**：$u$ 可以到达（reach） $v$，如果存在 $u$-$v$ 漫步。
 
-**定义 3**：$u$ 和 $v$ **强连通（strongly connected）**如果存在从 $u$ 到 $v$ 的有向漫步和从 $v$ 到 $u$ 的有向漫步。
+**定义 3**：$u$ 和 $v$ 强连通（strongly connected）如果存在从 $u$ 到 $v$ 的有向漫步和从 $v$ 到 $u$ 的有向漫步。
 
 **定义 4**：图 $G$ 是**强连通图**当且仅当每对顶点都强连通。
 
@@ -57,18 +57,18 @@ mathjax: true
 
 ### 1.6 凝聚图（Condensation Graphs）
 
-**定义 5**：$v$ 的**强连通分量（Strongly Connected Component, SCC）** $[v]$ 是由与 $v$ 强连通的所有顶点诱导的子图。
+**定义 5**：$v$ 的强连通分量（Strongly Connected Component, SCC） $[v]$ 是由与 $v$ 强连通的所有顶点诱导的子图。
 
 SCC 将顶点划分为等价类，但有些边在分量之间穿越。
 
-**定义 6**：图 $G$ 的**凝聚图（condensation graph）** $H = (C, E')$ 定义为：
+**定义 6**：图 $G$ 的凝聚图（condensation graph） $H = (C, E')$ 定义为：
 $$C = \{[v] : v \in V\}, \quad E' = \{([u], [v]) : [u] \neq [v] \text{ 且 } (u, v) \in E\}$$
 
 本质上是将每个 SCC 缩成一个顶点并去掉所有自环。
 
 ## 2 DAG（有向无环图）
 
-**定义 7**：一个**有向无环图（Directed Acyclic Graph, DAG）**是没有圈的有向图。
+**定义 7**：一个有向无环图（Directed Acyclic Graph, DAG）是没有圈的有向图。
 
 事实上，每个凝聚图都是一个 DAG！
 
@@ -78,11 +78,11 @@ $$C = \{[v] : v \in V\}, \quad E' = \{([u], [v]) : [u] \neq [v] \text{ 且 } (u,
 
 ### 2.1 拓扑排序（Topological Orders）
 
-**定义 8**：有向图中的**源（source）**是入度为 0 的顶点；**汇（sink）**是出度为 0 的顶点。
+**定义 8**：有向图中的源（source）是入度为 0 的顶点；汇（sink）是出度为 0 的顶点。
 
-**定义 9**：DAG 中的源是**极小元（minimal element）**，汇是**极大元（maximal element）**。
+**定义 9**：DAG 中的源是极小元（minimal element），汇是极大元（maximal element）。
 
-**定义 10**：DAG 的一个**拓扑顺序（topological order/topological sort）**是所有顶点的列表，使得每个顶点都出现在可从它到达的所有其他顶点之前。
+**定义 10**：DAG 的一个拓扑顺序（topological order/topological sort）是所有顶点的列表，使得每个顶点都出现在可从它到达的所有其他顶点之前。
 
 **定理 3**：每个有限 DAG 都有拓扑顺序！
 
@@ -94,11 +94,11 @@ $$C = \{[v] : v \in V\}, \quad E' = \{([u], [v]) : [u] \neq [v] \text{ 且 } (u,
 
 ### 2.2 并行任务调度
 
-**定义 11**：两个顶点 $u, v$ 是**可比较的（comparable）**如果 $u$ 可达 $v$ 或 $v$ 可达 $u$。
+**定义 11**：两个顶点 $u, v$ 是可比较的（comparable）如果 $u$ 可达 $v$ 或 $v$ 可达 $u$。
 
-一个**链（chain）**是顶点子集，其中每对都可比较。
+一个链（chain）是顶点子集，其中每对都可比较。
 
-一个**反链（antichain）**是顶点子集，其中每对不同顶点都不可比较。
+一个反链（antichain）是顶点子集，其中每对不同顶点都不可比较。
 
 **事实 1**：最短并行调度 $\geq$ 最长链的长度。
 
@@ -106,6 +106,6 @@ $$C = \{[v] : v \in V\}, \quad E' = \{([u], [v]) : [u] \neq [v] \text{ 且 } (u,
 
 **证明**：令 $\text{depth}(v)$ 为以 $v$ 结束的最长路径长度。按深度分层 $V_i$，每个 $V_i$ 是反链。在第 $i$ 步并行执行 $V_i$ 全部任务，恰好需要 $c$（关键路径长度）步。
 
-**定理 5（Dilworth 定理）**：对每个阈值 $t > 0$，每个 $n$ 顶点 DAG 有一条大小 $> t$ 的链或一个大小 $\geq n/t$ 的反链。
+定理 5（Dilworth 定理）：对每个阈值 $t > 0$，每个 $n$ 顶点 DAG 有一条大小 $> t$ 的链或一个大小 $\geq n/t$ 的反链。
 
 **推论 6**：每个 $n$ 顶点 DAG 有一条大小 $> \sqrt{n}$ 的链或一个大小 $\geq \sqrt{n}$ 的反链。

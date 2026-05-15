@@ -94,7 +94,7 @@ $$
 
 ## 4 主定理（Master Theorem）
 
-**定理 1（主定理）**：设 $a \geq 1$ 和 $b > 1$ 为常数，$f(n)$ 是一个函数，$T(n)$ 由递推 $T(n) = a \cdot T(\lfloor n/b \rfloor) + f(n)$ 定义。则 $T(n)$ 有以下渐进界限：
+定理 1（主定理）：设 $a \geq 1$ 和 $b > 1$ 为常数，$f(n)$ 是一个函数，$T(n)$ 由递推 $T(n) = a \cdot T(\lfloor n/b \rfloor) + f(n)$ 定义。则 $T(n)$ 有以下渐进界限：
 
 1. 如果 $f(n) = O(n^{\log_b a - \epsilon})$（$\epsilon > 0$），则 $T(n) = \Theta(n^{\log_b a})$
 2. 如果 $f(n) = \Theta(n^{\log_b a})$，则 $T(n) = \Theta(n^{\log_b a} \log n)$
@@ -106,10 +106,10 @@ $$
 - **情况 3**：$f$ 增长很快，顶层节点主导，$T(n) = \Theta(f(n))$
 - **情况 2**：两者平衡，每层贡献大致相同，$T(n) = \Theta(n^{\log_b a} \log n)$
 
-**例子**：
+**例子：
 - 归并排序：$T(n) = 2T(\lceil n/2 \rceil) + n - 1$，$a=b=2$，$n^{\log_2 2} = n^1$。情况 2：$T(n) \in \Theta(n \log n)$
 - 二分查找：$T(n) = T(\lceil n/2 \rceil) + 1$，$a=1, b=2$。情况 2：$T(n) \in \Theta(\log n)$
 - Karatsuba 乘法：$T(n) = 3T(\lceil n/2 \rceil) + \Theta(n)$，$a=3, b=2$。情况 1：$T(n) \in \Theta(n^{\log_2 3})$
-- 汉诺塔：$T(n) = 2T(n-1) + 1$。**不能**应用主定理（不是分治形式）
+- 汉诺塔：$T(n) = 2T(n-1) + 1$。不能**应用主定理（不是分治形式）
 
 **注意**：主定理存在空隙！例如 $T(n) = 2T(n/2) + n\log n$ 不能被主定理解决（比情况 2 大一个 $\log$ 因子，但又不到情况 3 的多项式因子）。

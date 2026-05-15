@@ -7,20 +7,21 @@
 
 // 确保粗体中文/日文也能清晰显示
 // CJK 字体通常没有真正的 bold 变体，font-weight: 700 会回退到常规字重。
-// 解决方案：用 text-shadow 模拟加粗效果，配合颜色差异双保险。
+// 解决方案：
+//   1. -webkit-text-stroke 在 Chrome/Safari 中为文字添加描边，模拟加粗
+//   2. text-shadow 作为 Firefox 等不支持 text-stroke 的浏览器的回退方案
 strong {
   font-weight: 700;
-  color: #111;
-  // text-shadow 向右偏移，模拟笔画加粗，解决 CJK 字体无 bold 变体问题
-  // 原理：在文字右侧 0.5px 处叠加一层同色文字，视觉上笔画变粗
-  text-shadow: 0.5px 0 0 currentColor;
+  color: #000;
+  -webkit-text-stroke: 0.4px #000;
+  text-shadow: 0 0 0.5px currentColor;
 }
 
-// 暗色模式下同样需要明显区分
+// 暗色模式
 [data-theme="dark"] strong {
-  color: #f0f0f0;
-  font-weight: 700;
-  text-shadow: 0.5px 0 0 currentColor;
+  color: #f5f5f5;
+  -webkit-text-stroke: 0.4px #f5f5f5;
+  text-shadow: 0 0 0.5px currentColor;
 }
 
 .posts-expand .post-title-link {

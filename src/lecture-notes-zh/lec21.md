@@ -14,12 +14,12 @@ mathjax: true
 
 ## 1 随机变量
 
-**定义 1**：一个**随机变量（random variable, RV）**是一个全函数，其定义域为样本空间。
+**定义 1**：一个随机变量（random variable, RV）是一个全函数，其定义域为样本空间。
 
 例如，假设样本空间对应掷三枚公平独立硬币。一些可能的 RV：
 1. 第一枚硬币的值（H 或 T，或编码为 0/1）
 2. 正面的数量（记作 $R$）
-3. 如果三枚硬币结果全部匹配则为 1，否则为 0（记作 $M$）——取值为 0/1 的 RV 称为**指示变量（indicator）**
+3. 如果三枚硬币结果全部匹配则为 1，否则为 0（记作 $M$）——取值为 0/1 的 RV 称为指示变量（indicator）
 
 RV 自然地产生**事件**：对 RV $f$ 和值 $x$，我们定义事件 $f = x$ 为满足 $f(\omega) = x$ 的结果 $\omega$ 的集合。反之，每个事件 $A$ 对应于一个指示 RV $1[A]$，当 $\omega \in A$ 时等于 1，否则为 0。
 
@@ -33,7 +33,7 @@ $$\Pr[f \in T] = \sum_{x \in T} \Pr[f = x].$$
 
 $$\Pr[R = 2 \mid M = 1] = \frac{\Pr[R = 2 \cap M = 1]}{\Pr[M = 1]} = 0.$$
 
-**定义 2**：两个 RV $X, Y$ 是**独立的（independent）**，如果对所有值 $x, y$，$\Pr[X = x \cap Y = y] = \Pr[X = x] \cdot \Pr[Y = y]$。等价地，对所有 $x, y$，要么 $\Pr[Y = y] = 0$，要么 $\Pr[X = x \mid Y = y] = \Pr[X = x]$。
+**定义 2**：两个 RV $X, Y$ 是独立的（independent），如果对所有值 $x, y$，$\Pr[X = x \cap Y = y] = \Pr[X = x] \cdot \Pr[Y = y]$。等价地，对所有 $x, y$，要么 $\Pr[Y = y] = 0$，要么 $\Pr[X = x \mid Y = y] = \Pr[X = x]$。
 
 直观理解：两个 RV 独立，如果知道 $Y$ 取任何特定值都不会揭示关于 $X$ 的额外信息。
 
@@ -41,23 +41,23 @@ $$\Pr[R = 2 \mid M = 1] = \frac{\Pr[R = 2 \cap M = 1]}{\Pr[M = 1]} = 0.$$
 - $R$ 和 $M$ **不独立**（$\Pr[R = 2 \cap M = 1] = 0$ 但 $\Pr[R = 2] \neq 0$ 且 $\Pr[M = 1] \neq 0$）
 - 掷两枚公平骰子得 $D_1, D_2$，令 $S = D_1 + D_2$。$D_1$ 和 $S$ 不独立。但令 $T = 1[S = 7]$，则 $T$ 和 $D_1$ **是独立的**！（因为对 $D_1$ 的每个值，恰有 $D_2$ 的一个值使和为 7）
 
-**定义 3**：一组 RV $X_1, \ldots, X_n$ 是**相互独立的（mutually independent）**，如果对所有值 $x_1, \ldots, x_n$，
+**定义 3**：一组 RV $X_1, \ldots, X_n$ 是相互独立的（mutually independent），如果对所有值 $x_1, \ldots, x_n$，
 
 $$\Pr[X_1 = x_1, \ldots, X_n = x_n] = \Pr[X_1 = x_1] \cdots \Pr[X_n = x_n].$$
 
 ## 3 分布、PMF 和 CDF
 
-对任意 RV $X$，定义**概率质量函数（probability mass function, PMF）**：
+对任意 RV $X$，定义概率质量函数（probability mass function, PMF）：
 
 $$f(x) = \Pr[X = x],$$
 
-以及**累积分布函数（cumulative distribution function, CDF）**：
+以及累积分布函数（cumulative distribution function, CDF）：
 
 $$F(x) = \sum_{y \leq x} \Pr[X = y].$$
 
 常见情况：
 - **伯努利（Bernoulli）/ 指示随机变量**：$f(0) = p, f(1) = 1-p$
-- **均匀随机变量（uniform random variable）**在 $\{1, 2, \ldots, n\}$ 上：$f(i) = 1/n, F(i) = i/n$
+- 均匀随机变量（uniform random variable）在 $\{1, 2, \ldots, n\}$ 上：$f(i) = 1/n, F(i) = i/n$
 
 ## 4 两信封问题（Two Envelope Problem）
 
@@ -65,7 +65,7 @@ $$F(x) = \sum_{y \leq x} \Pr[X = y].$$
 
 现在，我让你偷看你所选信封里的金额，然后给你机会换信封。你应该换吗？如果总做相同的事（总换或总不换），成功率都不能超过 $1/2$。
 
-**策略**：如果你碰巧知道一个数 $z$ 位于两个信封金额的中间，则策略很明确：如果你看到的金额高于 $z$ 就不换，否则换！但你如何得知 $z$？**猜！**
+**策略：如果你碰巧知道一个数 $z$ 位于两个信封金额的中间，则策略很明确：如果你看到的金额高于 $z$ 就不换，否则换！但你如何得知 $z$？猜！**
 
 令 $z$ 为从 $\{0.5, 1.5, \ldots, 99.5\}$ 中均匀随机选取的阈值。策略：如果 $x_r > z$ 则不换，否则换。
 

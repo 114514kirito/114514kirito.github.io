@@ -18,31 +18,31 @@ mathjax: true
 
 $$\Pr[A] := \sum_{\omega \in A} \Pr[\omega].$$
 
-**命题 1（加法规则，Sum Rule）**：如果 $A$ 和 $B$ 是不相交的事件，则
+命题 1（加法规则，Sum Rule）：如果 $A$ 和 $B$ 是不相交的事件，则
 
 $$\Pr[A \cup B] = \Pr[A] + \Pr[B].$$
 
-**推论 2（补集规则，Complement Rule）**：$\Pr[\overline{A}] = 1 - \Pr[A].$
+推论 2（补集规则，Complement Rule）：$\Pr[\overline{A}] = 1 - \Pr[A].$
 
-**推论 3（差集规则，Difference Rule）**：$\Pr[A \setminus B] = \Pr[A] - \Pr[A \cap B].$
+推论 3（差集规则，Difference Rule）：$\Pr[A \setminus B] = \Pr[A] - \Pr[A \cap B].$
 
-**推论 4（容斥原理，Inclusion-Exclusion）**：
+推论 4（容斥原理，Inclusion-Exclusion）：
 
 $$\Pr[A \cup B] = \Pr[A] + \Pr[B] - \Pr[A \cap B].$$
 
-**推论 5（联合界，Union Bound）**：$\Pr[A \cup B] \leq \Pr[A] + \Pr[B].$
+推论 5（联合界，Union Bound）：$\Pr[A \cup B] \leq \Pr[A] + \Pr[B].$
 
-**推论 6（单调性规则，Monotonicity Rule）**：若 $A \subseteq B$，则 $\Pr[A] \leq \Pr[B].$
+推论 6（单调性规则，Monotonicity Rule）：若 $A \subseteq B$，则 $\Pr[A] \leq \Pr[B].$
 
 ## 2 条件概率（Conditional Probability）
 
 如何用数学方式表达"如果汽车在 1 号门后面，参赛者以 $1/3$ 的概率选择 1 号门"这样的陈述？
 
-**定义 2**：对于两个事件 $A, B$，**给定 $B$ 下 $A$ 的条件概率（conditional probability）**为
+**定义 2：对于两个事件 $A, B$，给定 $B$ 下 $A$ 的条件概率（conditional probability）**为
 
 $$\Pr[A \mid B] = \frac{\Pr[A \cap B]}{\Pr[B]}.$$
 
-**推论 10（乘法规则，Product Rule）**：
+推论 10（乘法规则，Product Rule）：
 
 $$\Pr[A \cap B] = \Pr[A \mid B] \Pr[B].$$
 
@@ -65,9 +65,9 @@ $$\Pr[A \mid B] = \frac{\Pr[A \cap B]}{\Pr[B]} = \frac{1/3 + 1/18}{1/2} = \frac{
 
 ## 4 贝叶斯规则（Bayes' Rule）
 
-$\Pr[B \mid A]$ 呢？可以同样计算，得到 $7/9$。这样的条件概率表达了一种**推断（inference）**：给定我们后来观察到 Ash 赢得了整个系列赛，他赢得第一场的概率是多少？
+$\Pr[B \mid A]$ 呢？可以同样计算，得到 $7/9$。这样的条件概率表达了一种推断（inference）：给定我们后来观察到 Ash 赢得了整个系列赛，他赢得第一场的概率是多少？
 
-通常我们有"模型"使得计算"前向"条件概率 $\Pr[A \mid B]$ 很容易，但我们真正想知道"后向"概率 $\Pr[B \mid A]$。**贝叶斯规则（Bayes' rule）**将它们联系起来：
+通常我们有"模型"使得计算"前向"条件概率 $\Pr[A \mid B]$ 很容易，但我们真正想知道"后向"概率 $\Pr[B \mid A]$。贝叶斯规则（Bayes' rule）将它们联系起来：
 
 $$\Pr[B \mid A] = \frac{\Pr[A \mid B] \Pr[B]}{\Pr[A]}.$$
 
@@ -77,7 +77,7 @@ $$\frac{\Pr[B \mid A]}{\Pr[C \mid A]} = \frac{\Pr[A \mid B] \Pr[B]}{\Pr[A \mid C
 
 ## 5 示例 2：有偏与公平硬币
 
-假设我有一枚**有偏硬币（biased coin）**（总是正面）和一枚**公平硬币（fair coin）**（正面概率一半）。我以均匀概率选一枚硬币并掷出正面。选中的硬币是公平的概率是多少？
+假设我有一枚有偏硬币（biased coin）（总是正面）和一枚公平硬币（fair coin）（正面概率一半）。我以均匀概率选一枚硬币并掷出正面。选中的硬币是公平的概率是多少？
 
 令 $H$ 为看到正面的事件，$F$ 为选中公平硬币的事件，$B$ 为选中偏置硬币的事件。
 
@@ -85,11 +85,11 @@ $$\frac{\Pr[F \mid H]}{\Pr[B \mid H]} = \frac{\Pr[H \mid F] \Pr[F]}{\Pr[H \mid B
 
 因此公平硬币的概率是 $1/3$，偏置硬币的概率是 $2/3$。
 
-术语：$\Pr[A \mid B]$ 称为**似然度（likelihood）**，$\Pr[B]$ 称为**先验概率（prior probability）**，$\Pr[B \mid A]$ 称为**后验概率（posterior probability）**。
+术语：$\Pr[A \mid B]$ 称为似然度（likelihood），$\Pr[B]$ 称为先验概率（prior probability），$\Pr[B \mid A]$ 称为后验概率（posterior probability）。
 
 ## 6 示例 3：新冠检测
 
-假设 MIT 社区 10% 的人有新冠（COVID）。检测的**假阳性率（false positive rate）**为 0.3，**假阴性率（false negative rate）**为 0.1。如果我检测呈阳性，我患新冠的概率是多少？
+假设 MIT 社区 10% 的人有新冠（COVID）。检测的假阳性率（false positive rate）为 0.3，假阴性率（false negative rate）为 0.1。如果我检测呈阳性，我患新冠的概率是多少？
 
 - 事件：$H$ 我健康，$S$ 我有病，$+$ 我检测阳性。
 - 概率：$\Pr[H] = 0.9$，$\Pr[+ \mid H] = 0.3$，$\Pr[- \mid S] = 0.1$。
@@ -99,7 +99,7 @@ $$\frac{\Pr[F \mid H]}{\Pr[B \mid H]} = \frac{\Pr[H \mid F] \Pr[F]}{\Pr[H \mid B
 
 $$\frac{\Pr[S \mid +]}{\Pr[H \mid +]} = \frac{\Pr[+ \mid S] \Pr[S]}{\Pr[+ \mid H] \Pr[H]} = \frac{0.9 \cdot 0.1}{0.3 \cdot 0.9} = \frac{1}{3}.$$
 
-所以我有 $1/4$ 的概率真的生病，$3/4$ 的概率是健康的！尽管检测看起来不错，但**基础患病率（base rate）**（先验概率）是主导因素。
+所以我有 $1/4$ 的概率真的生病，$3/4$ 的概率是健康的！尽管检测看起来不错，但基础患病率（base rate）（先验概率）是主导因素。
 
 ## 7 示例 4：辛普森悖论（Simpson's Paradox）
 

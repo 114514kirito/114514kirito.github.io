@@ -14,15 +14,15 @@ mathjax: true
 - 最困难但也最重要的部分
 - 涉及证明的结构
 
-**定义 1**：一条**推理规则（inference rule）**是将真命题组合起来以形成其他真命题的规则。
+**定义 1**：一条推理规则（inference rule）是将真命题组合起来以形成其他真命题的规则。
 
 示例：
 
-- **肯定前件（Modus ponens）**（有多种写法）：
+- 肯定前件（Modus ponens）（有多种写法）：
     - $((P \Rightarrow Q) \land P) \Rightarrow Q$
     - $P \Rightarrow Q,\; P \vdash Q$
     - $\dfrac{P \Rightarrow Q \quad P}{Q}$
-- **否定后件（Modus tollens）**：$((P \Rightarrow Q) \land \neg Q) \Rightarrow \neg P$
+- 否定后件（Modus tollens）：$((P \Rightarrow Q) \land \neg Q) \Rightarrow \neg P$
 - $((P \Rightarrow Q) \land (Q \Rightarrow R)) \Rightarrow (P \Rightarrow R)$
 - $((\neg P) \Rightarrow \text{false}) \Rightarrow P$
 
@@ -47,7 +47,7 @@ mathjax: true
 - 我们也不挑剔你具体使用哪些公理；一般来说，你之前学过的基础数学都可以作为前提
 - 但如果我们要你证明 $P$，那么「我已经知道 $P$，所以它是公理」不是一个有效的证明……
 
-今天我们将探索一些基本（但至关重要的！）证明技巧，然后是两种强大的技巧：**反证法（Proof by Contradiction）**和**数学归纳法（Proof by Induction）**。
+今天我们将探索一些基本（但至关重要的！）证明技巧，然后是两种强大的技巧：反证法（Proof by Contradiction）和数学归纳法（Proof by Induction）。
 
 ::: tip
 
@@ -119,11 +119,11 @@ $$n^2 = (2k+1)^2 = 4k^2 + 4k + 1 = 2(2k^2 + 2k) + 1$$
 
 ## 3 反证法（Proof by Contradiction）
 
-在反证法中，你**假设你想要证明的命题的相反情况**，然后利用该假设推导出一个谬误，即**矛盾（contradiction）**。
+在反证法中，你**假设你想要证明的命题的相反情况**，然后利用该假设推导出一个谬误，即矛盾（contradiction）。
 
 - 要用反证法证明 $P$，你需要证明蕴含 $(\neg P) \Rightarrow \text{false}$
 - 根据我们的推理规则，这是 $P$ 的一个有效证明！
-- 有时也被称为**间接证明（Indirect Proof）**
+- 有时也被称为间接证明（Indirect Proof）
 
 例如：
 
@@ -239,17 +239,17 @@ $$\frac{(n+1)(n+2)}{2} - \frac{n(n+1)}{2} = (n+1) \cdot \frac{(n+2)-n}{2} = n+1$
 |--------------------------------------------------|-----------------------|
 | $P(0)$ 且 $\forall n \geq 0.\; [P(n) \Rightarrow P(n+1)]$ | $\forall n \geq 0.\; P(n)$ |
 
-原来，这正是**归纳公理（Induction Axiom）**为我们所做的！
+原来，这正是归纳公理（Induction Axiom）为我们所做的！
 
-**公理 1（归纳法）**：设 $P(n)$ 是一个针对 $n \in \mathbb{N}$ 定义的谓词。如果 $P(0)$ 成立，且 $\forall n \in \mathbb{N}.\; P(n) \Rightarrow P(n+1)$ 成立，则 $\forall n \in \mathbb{N}.\; P(n)$ 成立。
+公理 1（归纳法）：设 $P(n)$ 是一个针对 $n \in \mathbb{N}$ 定义的谓词。如果 $P(0)$ 成立，且 $\forall n \in \mathbb{N}.\; P(n) \Rightarrow P(n+1)$ 成立，则 $\forall n \in \mathbb{N}.\; P(n)$ 成立。
 
 现在，让我们看看如何用归纳原理来正式证明我们的定理。
 
 **定理 2 的归纳法证明**：令 $P(n)$ 为谓词 $1 + 2 + \cdots + n = n(n+1)/2$。我们对 $n$ 进行归纳，证明 $\forall n \in \mathbb{N}.\; P(n)$。
 
-**基础情况（Base case）**，必须证明 $P(0)$：左边为 0，右边为 $(0)(1)/2 = 0$，两边相等。
+基础情况（Base case），必须证明 $P(0)$：左边为 0，右边为 $(0)(1)/2 = 0$，两边相等。
 
-**归纳步骤（Inductive step）**：令 $n \in \mathbb{N}$，假设 $P(n)$ 为真；我们必须证明 $P(n+1)$。换言之，假设 $1 + 2 + \cdots + n = n(n+1)/2$；我们必须证明 $1 + 2 + \cdots + n + (n+1) = (n+1)(n+2)/2$。将 $n+1$ 加到 $P(n)$ 的两边，可得：
+归纳步骤（Inductive step）：令 $n \in \mathbb{N}$，假设 $P(n)$ 为真；我们必须证明 $P(n+1)$。换言之，假设 $1 + 2 + \cdots + n = n(n+1)/2$；我们必须证明 $1 + 2 + \cdots + n + (n+1) = (n+1)(n+2)/2$。将 $n+1$ 加到 $P(n)$ 的两边，可得：
 
 $$(1 + 2 + \cdots + n) + (n+1) = \frac{n(n+1)}{2} + (n+1)$$
 $$= (n+1) \cdot \left(\frac{n}{2} + 1\right)$$
@@ -261,7 +261,7 @@ $$= (n+1) \cdot \frac{n+2}{2}$$
 
 ### 5.3 加强归纳假设（Strengthening the Induction Hypothesis）
 
-在上述证明中，谓词 $P(n)$ 就是我们所说的**归纳假设（Induction Hypothesis）**。通常（但不总是！）这就是你最初想要证明的谓词。
+在上述证明中，谓词 $P(n)$ 就是我们所说的归纳假设（Induction Hypothesis）。通常（但不总是！）这就是你最初想要证明的谓词。
 
 以下是一个不适用此情况的情境：假设我们有一个边长为 $2^n$ 的方格网。是否可以使用不重叠的 L 型三格骨牌（L-trominoes）覆盖整个网格，只留下一个中心方格？
 
@@ -289,10 +289,10 @@ $$= (n+1) \cdot \frac{n+2}{2}$$
 
 这个证明的两个优良特性：
 
-- 证明是**构造性的（constructive）**：它不仅证明了覆盖网格是可能的，还给出了实际操作的算法！
+- 证明是构造性的（constructive）：它不仅证明了覆盖网格是可能的，还给出了实际操作的算法！
 - 它得到了一个**更强的结果**：现在我们可以留下任意一个方格不被覆盖，而不仅仅是中心方格。
 
-**要点**：在用归纳法证明时，如果一开始不成功，**尝试更难的东西！**
+**要点：在用归纳法证明时，如果一开始不成功，尝试更难的东西！**
 
 - 这可能看起来违反直觉
 - 注意，加强归纳假设也意味着归纳步骤有了更好的起点

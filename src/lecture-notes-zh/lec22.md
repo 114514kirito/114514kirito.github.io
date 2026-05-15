@@ -14,7 +14,7 @@ mathjax: true
 ## 1 复习
 
 - **随机变量**：从样本空间 $S$ 到另一个集合（通常是非负实数）的（全）函数
-- **指示随机变量（indicator random variables）**：映射到 $\{0, 1\}$ 的函数
+- 指示随机变量（indicator random variables）：映射到 $\{0, 1\}$ 的函数
 - RV $R$ 与事件 $[R = x] := \{\omega : R(\omega) = x\}$
 - 事件 $E$ 与指示 RV $I_E(\omega) = 1$ 若 $\omega \in E$，否则为 0
 - 随机变量的独立性
@@ -22,7 +22,7 @@ mathjax: true
 
 ## 2 期望（Expectation）
 
-**定义 1（随机变量的期望值/平均值/均值）**：
+定义 1（随机变量的期望值/平均值/均值）：
 
 $$
 \mathrm{Ex}[R] := \sum_{\omega \in S} R(\omega) \cdot \Pr[\omega].
@@ -85,17 +85,17 @@ $$
 注意区分这四个公式：
 
 1. $\mathrm{Ex}[R] = \sum_{\omega \in S} R(\omega) \cdot \Pr[\omega]$ —— 按**结果** $\omega$ 求和（定义）
-2. $\mathrm{Ex}[R] = \sum_{x} x \cdot \Pr[R = x]$ —— 按 RV **值** $x$ 求和
+2. $\mathrm{Ex}[R] = \sum_{x} x \cdot \Pr[R = x]$ —— 按 RV **值 $x$ 求和
 3. $\mathrm{Ex}[R] = \sum_{i=0}^{\infty} \Pr[R > i]$ —— 仅当 $\text{range}(R) \subseteq \mathbb{N}$，按自然数 $i$ 求和
 4. $\mathrm{Ex}[R_1 + R_2] = \mathrm{Ex}[R_1] + \mathrm{Ex}[R_2]$ —— 期望的线性性
 
 ## 7 无穷期望
 
-假设要估计通信信道上的期望延迟。如果延迟为 $i$ 毫秒的概率是 $1/i$，则期望延迟为 $\sum_{i=1}^{\infty} 1/i$，**发散**！期望值无界而经验均值有限。
+假设要估计通信信道上的期望延迟。如果延迟为 $i$ 毫秒的概率是 $1/i$，则期望延迟为 $\sum_{i=1}^{\infty} 1/i$，发散**！期望值无界而经验均值有限。
 
 ## 8 期望的线性（Linearity of Expectation）
 
-**定理**：对随机变量 $R_1$ 和 $R_2$，
+**定理：对随机变量 $R_1$ 和 $R_2$，
 
 $$
 \mathrm{Ex}[R_1 + R_2] = \mathrm{Ex}[R_1] + \mathrm{Ex}[R_2].
@@ -103,9 +103,9 @@ $$
 
 对比：对事件，$\Pr(A \cap B) = \Pr(A) \cdot \Pr(B)$ 仅当 $A$ 和 $B$ 独立时才成立。$\Pr[A \cup B] = \Pr[A] + \Pr[B]$ 仅当不相交时才成立。
 
-相比之下，**期望的线性性适用于任何随机变量，不需要独立性！**这使其成为我们武库中的强大工具。
+相比之下，期望的线性性适用于任何随机变量，不需要独立性！**这使其成为我们武库中的强大工具。
 
-**示例**：$R$ 为两枚公平骰子之和。$R = R_1 + R_2$，则 $\mathrm{Ex}[R] = 7/2 + 7/2 = 7$。**骰子不需要独立！**即使两枚骰子完美相关（总掷出相同点数），同样的计算仍然适用！
+**示例：$R$ 为两枚公平骰子之和。$R = R_1 + R_2$，则 $\mathrm{Ex}[R] = 7/2 + 7/2 = 7$。骰子不需要独立！**即使两枚骰子完美相关（总掷出相同点数），同样的计算仍然适用！
 
 ## 9 手机检查问题（Cellphone Check Problem）
 

@@ -14,7 +14,7 @@ mathjax: true
 
 **命题 1**：对所有整数 $a, b$，$a$ 和 $b$ 的公约数恰好是 $a$ 和 $b-a$ 的公约数。
 
-**定理 2（Bezout 恒等式 + Pulverizer）**：对任意整数 $a, b$，存在整数 $s, t$ 使得 $\gcd(a, b) = as + bt$。
+定理 2（Bezout 恒等式 + Pulverizer）：对任意整数 $a, b$，存在整数 $s, t$ 使得 $\gcd(a, b) = as + bt$。
 
 **推论 3**：一个数可以写成 $a, b$ 的整数线性组合（ILC）当且仅当它是 $\gcd(a, b)$ 的倍数。
 
@@ -97,7 +97,7 @@ mathjax: true
 
 有乘法逆元意味着我们可以「从两边消去」或「除以」该量。
 
-**定理 10（费马小定理，Fermat's Little Theorem）**：如果 $p$ 是素数且 $a \not\equiv_p 0$，则 $a^{p-1} \equiv_p 1$。
+定理 10（费马小定理，Fermat's Little Theorem）：如果 $p$ 是素数且 $a \not\equiv_p 0$，则 $a^{p-1} \equiv_p 1$。
 
 （不要与费马大定理混淆。非常不同，困难得多。）
 

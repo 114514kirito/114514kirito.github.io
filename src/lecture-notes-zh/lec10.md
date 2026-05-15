@@ -17,23 +17,23 @@ mathjax: true
 前面学的 GCD、模运算、费马小定理，全是这一讲的铺垫。RSA 加密算法把这些数学工具组合了起来，保护了互联网上几乎所有的安全通信。当你学完这一讲，你就真正理解了 HTTPS 锁图标背后的数学原理。
 :::
 
-**密码学（Cryptography）**：保护信息的艺术/科学。基本思想是**加密（Encrypt）**消息，使只有特定方能够阅读。预期的接收者应该能够**解密（Decrypt）**以恢复原始消息。
+密码学（Cryptography）：保护信息的艺术/科学。基本思想是加密（Encrypt）消息，使只有特定方能够阅读。预期的接收者应该能够解密（Decrypt）以恢复原始消息。
 
-惯例：**Alicekazam** 向 **Bobasaur** 发送加密消息，**Eevee** 是窃听者，能听到一切但希望无法理解。
+惯例：**Alicekazam** 向 **Bobasaur 发送加密消息，Eevee 是窃听者，能听到一切但希望无法理解。
 
 ## 2 历史（不考）
 
 ### Caesar 密码
-每字母后移 3 位（模 26）。例如 CRYPTO → FUBSWR。**混淆式安全（Security by Obscurity）**：只要 Eevee 不知道你用了它就行。
+每字母后移 3 位（模 26）。例如 CRYPTO → FUBSWR。混淆式安全（Security by Obscurity）**：只要 Eevee 不知道你用了它就行。
 
 ### Caesar 移位
-Alice 和 Bob 事先约定秘密移位值 $k$。Eevee 不知道 $k$，但我们安全吗？容易受到**暴力攻击（Brute Force）**：Eevee 只需尝试全部 26 种选项。
+Alice 和 Bob 事先约定秘密移位值 $k$。Eevee 不知道 $k$，但我们安全吗？容易受到暴力攻击（Brute Force）：Eevee 只需尝试全部 26 种选项。
 
 ### 替换密码（Substitution Cipher）
-将每个字母映射到不同字母。共有 $26!$ 种可能的密钥。容易受到**频率分析（Frequency Analysis）**攻击。
+将每个字母映射到不同字母。共有 $26!$ 种可能的密钥。容易受到频率分析（Frequency Analysis）攻击。
 
 ### 德国 Enigma
-二战德国 Enigma 机根据消息本身和秘密初始配置改变移位值。大约 $3 \cdot 10^{114}$ 种设置。**傲慢式安全（Security by Hubris）**：开发 Enigma 的工程师不知道如何破解它，就假设没人能破解。但盟军破解了密码。
+二战德国 Enigma 机根据消息本身和秘密初始配置改变移位值。大约 $3 \cdot 10^{114}$ 种设置。傲慢式安全（Security by Hubris）：开发 Enigma 的工程师不知道如何破解它，就假设没人能破解。但盟军破解了密码。
 
 ### 一次性密码本（One-Time Pad）
 Caesar 移位但用更大的数。消息编码为 0 到 $n-1$ 之间的数。Alice 发送 $\text{enc}(m, k) = \text{rem}(m+k, n)$，Bob 计算 $m = \text{rem}(\text{enc} - k, n)$。如果 $k$ 均匀随机选择，则 $m+k$ 也是均匀随机的，不泄露任何信息。**但不能重用 $k$**（已知明文攻击和消息关联性分析），因此称为「一次性」密码本。
@@ -48,11 +48,11 @@ Alice 和 Bob 通过公开信道协商秘密值 $k$，Eevee 无法发现。
 5. Alice 计算 $x := (c^b)^a \bmod n = c^{ab} \bmod n$
 6. Bob 计算 $y := (c^a)^b \bmod n = c^{ab} \bmod n = x$
 
-这是共享密钥。Eevee 知道 $c, c^a, c^b$，但从 $c$ 和 $c^a \bmod n$ 恢复 $a$ 是**离散对数问题（Discrete Log Problem）**，目前没有计算上可行的方法。
+这是共享密钥。Eevee 知道 $c, c^a, c^b$，但从 $c$ 和 $c^a \bmod n$ 恢复 $a$ 是离散对数问题（Discrete Log Problem），目前没有计算上可行的方法。
 
 ## 3 RSA
 
-RSA = **Rivest, Shamir, Adleman**（MIT 发明者，2002 年 Turing 奖）。**公钥密码系统（Public-Key Cryptosystem）**：可以公开告诉所有人加密密钥，但它只允许加密，不能解密。
+RSA = **Rivest, Shamir, Adleman（MIT 发明者，2002 年 Turing 奖）。公钥密码系统（Public-Key Cryptosystem）**：可以公开告诉所有人加密密钥，但它只允许加密，不能解密。
 
 **密钥生成**：
 1. 选择两个大素数 $p, q$。保密 $p, q$，但公开 $n := pq$
@@ -74,7 +74,7 @@ RSA = **Rivest, Shamir, Adleman**（MIT 发明者，2002 年 Turing 奖）。**�
 
 ## 4 中国剩余定理（Chinese Remainder Theorem, CRT）
 
-**定理 1（CRT）**：假设 $p$ 和 $q$ 互素，$a, b \in \mathbb{Z}$。则在模 $pq$ 下，方程组存在唯一解 $x$：
+定理 1（CRT）：假设 $p$ 和 $q$ 互素，$a, b \in \mathbb{Z}$。则在模 $pq$ 下，方程组存在唯一解 $x$：
 
 $$\begin{cases} x \equiv_p a \\ x \equiv_q b \end{cases}$$
 

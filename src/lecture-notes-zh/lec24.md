@@ -14,11 +14,11 @@ mathjax: true
 
 ## 1 复习：方差（Variance）
 
-**定义 1**：$R$ 的**方差（variance）**为
+**定义 1**：$R$ 的方差（variance）为
 
 $$\mathrm{Var}[R] = \mathrm{Ex}\left[(R - \mathrm{Ex}[R])^2\right].$$
 
-$R$ 的**标准差（standard deviation）**，记作 $\sigma(R)$，是方差的（正）平方根。
+$R$ 的标准差（standard deviation），记作 $\sigma(R)$，是方差的（正）平方根。
 
 **定理 1**：$\mathrm{Var}[R] = \mathrm{Ex}[R^2] - \mathrm{Ex}[R]^2.$
 
@@ -32,7 +32,7 @@ $$\mathrm{Var}[R_1 + \ldots + R_n] = \mathrm{Var}[R_1] + \ldots + \mathrm{Var}[R
 
 ### 3.1 马尔可夫不等式（Markov's Inequality）
 
-**定理 3（马尔可夫不等式）**：令 $R$ 为非负随机变量。则
+定理 3（马尔可夫不等式）：令 $R$ 为非负随机变量。则
 
 $$\Pr[R \geq x] \leq \frac{\mathrm{Ex}[R]}{x}.$$
 
@@ -46,7 +46,7 @@ $$\Pr[R \geq x] \leq \frac{\mathrm{Ex}[R]}{x}.$$
 
 ### 3.3 马尔可夫通常不紧
 
-在手机检查问题中，$\mathrm{Ex}[R] = 1$。所有人拿回手机的概率？马尔可夫给出 $\leq 1/n$。真实答案？在排列版本中是 $1/(n!)$。$n! \gg n$，所以马尔可夫的估计相去甚远。上界正确但**松散（loose）**。
+在手机检查问题中，$\mathrm{Ex}[R] = 1$。所有人拿回手机的概率？马尔可夫给出 $\leq 1/n$。真实答案？在排列版本中是 $1/(n!)$。$n! \gg n$，所以马尔可夫的估计相去甚远。上界正确但松散（loose）。
 
 **示例：掷 $n$ 枚硬币**。$R = R_1 + \ldots + R_n$，其中 $R_i$ 为指示 RV（第 $i$ 枚为正面）。$\mathrm{Ex}[R_i] = 1/2$，$\mathrm{Var}[R_i] = 1/4$。$\mathrm{Ex}[R] = n/2$，$\mathrm{Var}[R] = n/4$，$\sigma(R) = \sqrt{n}/2$。
 
@@ -54,11 +54,11 @@ $$\Pr[R \geq x] \leq \frac{\mathrm{Ex}[R]}{x}.$$
 
 ## 4 切比雪夫不等式（Chebyshev's Inequality）
 
-**定理 5（切比雪夫不等式）**：对每个 $x > 0$ 和每个 RV $R$（不必非负），
+定理 5（切比雪夫不等式）：对每个 $x > 0$ 和每个 RV $R$（不必非负），
 
 $$\Pr[|R - \mathrm{Ex}[R]| \geq x] \leq \frac{\mathrm{Var}[R]}{x^2} = \left(\frac{\sigma(R)}{x}\right)^2.$$
 
-**$R$ 可以是任意随机变量！不再需要非负！**
+$R$ 可以是任意随机变量！不再需要非负！
 
 **证明**：对（非负）随机变量 $(R - \mathrm{Ex}[R])^2$ 使用马尔可夫：
 
@@ -78,7 +78,7 @@ $$\Pr[R \geq 3n/4] \leq \Pr[|R - n/2| \geq n/4] \leq \frac{n/4}{(n/4)^2} = \frac
 
 切比雪夫只利用了硬币投掷的**两两独立**性。利用所有硬币投掷的**相互独立**性，可以通过切尔诺夫界得到更好的界。
 
-**定理 7（切尔诺夫界）**：令 $T_1, \ldots, T_n$ 为相互独立的随机变量，满足 $0 \leq T_i \leq 1$ 对所有 $i$。令 $T = T_1 + T_2 + \ldots + T_n$。则对所有 $c \geq 1$，
+定理 7（切尔诺夫界）：令 $T_1, \ldots, T_n$ 为相互独立的随机变量，满足 $0 \leq T_i \leq 1$ 对所有 $i$。令 $T = T_1 + T_2 + \ldots + T_n$。则对所有 $c \geq 1$，
 
 $$\Pr[T \geq c \cdot \mathrm{Ex}[T]] \leq e^{-(c \ln c - c + 1) \cdot \mathrm{Ex}[T]}.$$
 

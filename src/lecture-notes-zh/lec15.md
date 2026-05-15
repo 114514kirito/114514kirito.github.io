@@ -12,9 +12,9 @@ mathjax: true
 
 ## 1 关系（Relations）
 
-**定义 1**：一个**关系（relation）** $R \subseteq A \times B$ 包含：
-- 一个**定义域（domain）** $A$（可以是任意集合），
-- 一个**陪域（codomain）** $B$（可以是任意集合），
+**定义 1**：一个关系（relation） $R \subseteq A \times B$ 包含：
+- 一个定义域（domain） $A$（可以是任意集合），
+- 一个陪域（codomain） $B$（可以是任意集合），
 - 以及一个有序对的子集 $R \subseteq A \times B$。
 
 关系推广了从 $A$ 到 $B$ 的函数概念。
@@ -30,13 +30,13 @@ mathjax: true
 
 函数是一个重要的例子：
 
-**定义 2**：关系 $R \subseteq A \times B$ 是一个**函数（function）**，如果每个 $a \in A$ 关联到至多一个 $b \in B$。此时记为 $R : A \to B$。每个 $a \in A$ "至多 1 条出边"。
+**定义 2**：关系 $R \subseteq A \times B$ 是一个函数（function），如果每个 $a \in A$ 关联到至多一个 $b \in B$。此时记为 $R : A \to B$。每个 $a \in A$ "至多 1 条出边"。
 
 当 $R$ 是函数时，我们可以用 $R(a)$ 表示它所关联到的那个唯一元素 $b$（如果存在）。
 
 **定义 3**：关系 $R \subseteq A \times B$ 是**全（total）的**，如果每个 $a \in A$ 关联到至少一个 $b \in B$："至少 1 条出边"。
 
-这两者经常一起出现：一个**全函数（total function）** $f$ 在每个 $a \in A$ 恰有一条出边。因此 $f(a)$ 对所有输入都存在，且无歧义。
+这两者经常一起出现：一个全函数（total function） $f$ 在每个 $a \in A$ 恰有一条出边。因此 $f(a)$ 对所有输入都存在，且无歧义。
 
 关于入边的类似术语：
 
@@ -50,43 +50,43 @@ $R$ 是**满射（surjective）的**，如果每个 $b \in B$ 至少有 1 个 $a
 
 **定理 2**：若 $A$ 和 $B$ 是有限集，且 $R \subseteq A \times B$ 是满射函数，则 $|A| \geq |B|$。
 
-**定义 5**：既是单射又是满射的全函数称为**双射（bijection）**。
+**定义 5**：既是单射又是满射的全函数称为双射（bijection）。
 
 **定理 3**：若 $A$ 和 $B$ 是有限集，且 $R \subseteq A \times B$ 是双射，则 $|A| = |B|$。
 
 ## 2 单个集合上的关系
 
-我们从未说过 $A$ 和 $B$ 必须不相交甚至不同！很多有用的例子来自 $A = B$ 的情况。关系 $R \subseteq A \times A$ 称为 $A$ 上的**二元关系（binary relation）**。
+我们从未说过 $A$ 和 $B$ 必须不相交甚至不同！很多有用的例子来自 $A = B$ 的情况。关系 $R \subseteq A \times A$ 称为 $A$ 上的二元关系（binary relation）。
 
 这个定义与有向图的定义完全相同。$a R b$ 意味着图中有向边 $(a, b)$。熟悉的例子：$a = b$、$a \equiv b \pmod{10}$、$a \leq b$、$A \subseteq B$、$a \mid b$。
 
-如果 $G$ 是有向图，我们考察其**漫步关系（walk relation）**，即**可达关系（reachability relation）** $G^*$，其中 $a G^* b$ 当且仅当存在从 $a$ 到 $b$ 的漫步。还有**强连通关系（strong connectivity relation）** $S$，其中 $a S b$ 当且仅当 $a G^* b$ 且 $b G^* a$。
+如果 $G$ 是有向图，我们考察其漫步关系（walk relation），即可达关系（reachability relation） $G^*$，其中 $a G^* b$ 当且仅当存在从 $a$ 到 $b$ 的漫步。还有强连通关系（strong connectivity relation） $S$，其中 $a S b$ 当且仅当 $a G^* b$ 且 $b G^* a$。
 
 ### 2.1 等价关系（Equivalence Relations）
 
 想要捕捉像"$=$"一样的行为，表示"相同性"或"等价性"。
 
 **定义 6**：设 $R \subseteq A \times A$ 是 $A$ 上的关系。
-- $R$ 是**自反的（reflexive）**：对所有 $a \in A$，$a R a$。
-- $R$ 是**对称的（symmetric）**：对所有 $a, b \in A$，$a R b$ 当且仅当 $b R a$。
-- $R$ 是**传递的（transitive）**：对所有 $a, b, c \in A$，$a R b$ 且 $b R c$ 蕴含 $a R c$。
-- $R$ 是**等价关系（equivalence relation）**，如果 $R$ 是自反的、对称的且传递的。
+- $R$ 是自反的（reflexive）：对所有 $a \in A$，$a R a$。
+- $R$ 是对称的（symmetric）：对所有 $a, b \in A$，$a R b$ 当且仅当 $b R a$。
+- $R$ 是传递的（transitive）：对所有 $a, b, c \in A$，$a R b$ 且 $b R c$ 蕴含 $a R c$。
+- $R$ 是等价关系（equivalence relation），如果 $R$ 是自反的、对称的且传递的。
 
-**定理 4**：如果 $R$ 是 $A$ 上的等价关系，则 $R$ 将 $A$ 划分为称为**等价类（equivalence classes）**的子集，其中每个 $a \in A$ 恰好属于一个等价类，且 $a R b$ 为真当且仅当 $a$ 和 $b$ 属于同一个等价类。
+**定理 4**：如果 $R$ 是 $A$ 上的等价关系，则 $R$ 将 $A$ 划分为称为等价类（equivalence classes）的子集，其中每个 $a \in A$ 恰好属于一个等价类，且 $a R b$ 为真当且仅当 $a$ 和 $b$ 属于同一个等价类。
 
 ### 2.2 弱偏序（Weak Partial Orders）
 
 想要捕捉像"$\leq$"一样的行为，表示"排序"。
 
 **定义 7**：设 $R \subseteq A \times A$ 是 $A$ 上的关系。
-- $R$ 是**反对称的（antisymmetric）**：对所有 $a, b \in A$，若 $a R b$ 且 $b R a$ 同时为真，则 $a = b$。
-- $R$ 是**弱偏序（weak partial order, WPO）**，如果 $R$ 是自反的、反对称的且传递的。
+- $R$ 是反对称的（antisymmetric）：对所有 $a, b \in A$，若 $a R b$ 且 $b R a$ 同时为真，则 $a = b$。
+- $R$ 是弱偏序（weak partial order, WPO），如果 $R$ 是自反的、反对称的且传递的。
 
 **定理 5**：如果 $G$ 是有向图，则 $G$ 上的漫步关系是 WPO 当且仅当 $G$ 是 DAG。
 
-**定义 8**：对于 WPO $R \subset A \times A$，两个元素 $a, b$ 称为**可比较的（comparable）**，当 $a R b$ 或 $b R a$。
+**定义 8**：对于 WPO $R \subset A \times A$，两个元素 $a, b$ 称为可比较的（comparable），当 $a R b$ 或 $b R a$。
 
-一个 WPO 称为**线性序（linear ordering）**，亦称**全序（total ordering）**，如果每对元素都是可比较的。
+一个 WPO 称为线性序（linear ordering），亦称全序（total ordering），如果每对元素都是可比较的。
 
 $a \leq b$ 是全序，但 $a \mid b$ 和 $A \subseteq B$ 不是。
 

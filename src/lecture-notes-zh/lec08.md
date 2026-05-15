@@ -33,7 +33,7 @@ mathjax: true
 - 如果 $a \mid b$ 且 $b \mid c$，则 $a \mid c$
 - 如果 $a \mid b$，则 $a \mid bc$
 - 如果 $a \mid b$ 且 $a \mid c$，则 $a \mid b+c$
-- 如果 $a \mid b$ 且 $a \mid c$，则 $a \mid sb + tc$ 对所有 $s, t \in \mathbb{Z}$ 成立。$sb + tc$ 被称为 $b$ 和 $c$ 的**整数线性组合（Integer Linear Combination, ILC）**
+- 如果 $a \mid b$ 且 $a \mid c$，则 $a \mid sb + tc$ 对所有 $s, t \in \mathbb{Z}$ 成立。$sb + tc$ 被称为 $b$ 和 $c$ 的整数线性组合（Integer Linear Combination, ILC）
 
 ## 3 虎胆龙威问题（Die Hard）
 
@@ -43,7 +43,7 @@ mathjax: true
 (0,0) → 装满 → (3,0) → 倒入 → (0,3) → 装满 → (3,3) → 倒入 → (1,5) → 清空 → (1,0) → 倒入 → (0,1) → 装满 → (3,1) → 倒入 → (0,4)
 ```
 
-续集《虎胆龙威 9》：6 加仑和 9 加仑的水壶，想要 5 加仑。**不可能！** 所有量都将是 3 的倍数。整除！
+续集《虎胆龙威 9》：6 加仑和 9 加仑的水壶，想要 5 加仑。不可能！ 所有量都将是 3 的倍数。整除！
 
 可以证明更一般的结论：给定容量为 $a$ 和 $b$ 的水壶，所有可达量都是 $a$ 和 $b$ 的整数线性组合。
 
@@ -53,9 +53,9 @@ mathjax: true
 
 ## 4 最大公约数（Greatest Common Divisor）
 
-**定义 2**：整数 $a$ 和 $b$ 的一个**公约数（common divisor）**是满足 $d \mid a$ 且 $d \mid b$ 的整数 $d$。
+**定义 2**：整数 $a$ 和 $b$ 的一个公约数（common divisor）是满足 $d \mid a$ 且 $d \mid b$ 的整数 $d$。
 
-**定义 3**：$a$ 和 $b$ 的**最大公约数（GCD）**，记为 $\gcd(a, b)$，是 $a$ 和 $b$ 的一个非负公约数 $g$，使得对 $a$ 和 $b$ 的每个公约数 $d$，有 $d \mid g$。
+**定义 3**：$a$ 和 $b$ 的最大公约数（GCD），记为 $\gcd(a, b)$，是 $a$ 和 $b$ 的一个非负公约数 $g$，使得对 $a$ 和 $b$ 的每个公约数 $d$，有 $d \mid g$。
 
 例如：$\gcd(6, 9) = 3$，$\gcd(5, 0) = 5$，$\gcd(0, 0) = 0$。
 
@@ -76,7 +76,7 @@ mathjax: true
 gcd(1001, 777) = gcd(777, 224) = gcd(224, 105) = gcd(105, 14) = gcd(14, 7) = gcd(7, 0) = 7
 ```
 
-**定义 4（Euclid 算法）**：从 $(a, b)$ 开始（假设 $a \geq b \geq 0$）。从每个状态 $(x, y)$，只要 $y > 0$，转移到 $(y, x \bmod y)$。当到达终止状态 $(x_f, 0)$ 时，答案为 $\gcd(a, b) = x_f$。
+定义 4（Euclid 算法）：从 $(a, b)$ 开始（假设 $a \geq b \geq 0$）。从每个状态 $(x, y)$，只要 $y > 0$，转移到 $(y, x \bmod y)$。当到达终止状态 $(x_f, 0)$ 时，答案为 $\gcd(a, b) = x_f$。
 
 - **部分正确性**：不变式 $P(x, y) := \gcd(x, y) = \gcd(a, b)$。终止状态 $y=0$ 时，$\gcd(a, b) = \gcd(x, 0) = x$
 - **终止性**：$x \bmod y < y \leq x$，所以 $x+y$ 严格递减。步数最多为 $a+b$。实际上是指数级更好：步数最多为 $\text{bitcount}(a) + \text{bitcount}(b)$
@@ -94,14 +94,14 @@ Euclid 算法中的每个数都是 $a$ 和 $b$ 的 ILC：
    7 = 105 - 7·14 = (-3a+4b) - 7(7a-9b) = -52a + 67b
 ```
 
-**定义 5（Pulverizer/扩展 Euclid 算法）**：从 $(a, b, 1, 0, 0, 1)$ 开始。从每个状态 $(x, y, s, t, u, v)$，只要 $y > 0$，转移到 $(y, r, u, v, s-qu, t-qv)$，其中 $q = x \text{ div } y$，$r = x \bmod y$。到达终止状态 $(x_f, 0, s_f, t_f, u_f, v_f)$ 时，答案为 $\gcd(a, b) = x_f = a s_f + b t_f$。
+定义 5（Pulverizer/扩展 Euclid 算法）：从 $(a, b, 1, 0, 0, 1)$ 开始。从每个状态 $(x, y, s, t, u, v)$，只要 $y > 0$，转移到 $(y, r, u, v, s-qu, t-qv)$，其中 $q = x \text{ div } y$，$r = x \bmod y$。到达终止状态 $(x_f, 0, s_f, t_f, u_f, v_f)$ 时，答案为 $\gcd(a, b) = x_f = a s_f + b t_f$。
 
 维护三个不变式：
 - $\gcd(x, y) = \gcd(a, b)$
 - $x = as + bt$
 - $y = au + bv$
 
-**定理 5（Bezout 恒等式，Bezout's Identity）**：$\gcd(a, b)$ 可以写成 $a$ 和 $b$ 的整数线性组合。即存在 $s, t$ 使得 $\gcd(a, b) = as + bt$。
+定理 5（Bezout 恒等式，Bezout's Identity）：$\gcd(a, b)$ 可以写成 $a$ 和 $b$ 的整数线性组合。即存在 $s, t$ 使得 $\gcd(a, b) = as + bt$。
 
 **推论 6**：一个数是 $a, b$ 的 ILC 当且仅当它是 $\gcd(a, b)$ 的倍数。
 
