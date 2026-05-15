@@ -132,6 +132,10 @@ export default hopeTheme({
       excerptLength: 0,
     },
     catalog: false,
+    search: {
+      hotKeys: ["s", "/"],
+      maxSuggestions: 6,
+    },
     // docsearch: {
     //   appId: "",
     //   apiKey: "",
