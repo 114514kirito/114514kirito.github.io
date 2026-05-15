@@ -33,6 +33,7 @@ export default hopeTheme({
   displayFooter: true,
 
   blog: {
+    avatar: "/Image_1778813659900_438.jpg",
     description: "Yukino's Blog",
     medias: {
       Discord: "",
