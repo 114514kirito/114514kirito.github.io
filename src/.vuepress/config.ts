@@ -5,9 +5,9 @@ import theme from "./theme.js";
 export default defineUserConfig({
   base: "/",
 
-  lang: "en-US",
-  title: "Mes's Blog",
-  description: "Being  Towards  Death",
+  lang: "zh-CN",
+  title: "Yukino's Blog",
+  description: "Yukino's Blog",
 
   theme,
 

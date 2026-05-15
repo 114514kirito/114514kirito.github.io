@@ -10,18 +10,18 @@ callgraph.name ??= "callgraph";
 callgraph.scopeName ??= "source.callgraph";
 
 export default hopeTheme({
-  hostname: "https://mes0903.github.io",
+  hostname: "https://114514kirito.github.io",
   contributors: false,
 
   author: {
-    name: "Mes",
-    url: "https://mes0903.github.io",
+    name: "Yukino",
+    url: "https://114514kirito.github.io",
   },
 
   logo: "/flame.jpg",
   favicon: "/flame.ico",
 
-  repo: "Mes0903/Mes0903.github.io",
+  repo: "114514kirito/114514kirito.github.io",
   repoDisplay: false,
 
   docsDir: "src",
@@ -33,15 +33,15 @@ export default hopeTheme({
   displayFooter: true,
 
   blog: {
-    description: "OS & CG dev",
+    description: "Yukino's Blog",
     medias: {
-      Discord: "https://discordapp.com/users/411596393074130944",
-      Email: "mes900903@gmail.com",
-      Facebook: "https://www.facebook.com/Mes0903/",
-      GitHub: "https://github.com/Mes0903",
-      Instagram: "https://www.instagram.com/mes_0903/",
-      Twitter: "https://x.com/Mes_0903",
-      Youtube: "https://www.youtube.com/@mes0903",
+      Discord: "",
+      Email: "",
+      Facebook: "",
+      GitHub: "",
+      Instagram: "",
+      Twitter: "",
+      Youtube: "",
     },
   },
 
@@ -131,11 +131,11 @@ export default hopeTheme({
       excerptLength: 0,
     },
     catalog: false,
-    docsearch: {
-      appId: "KE4NHPCNHW",
-      apiKey: "eeb47bb06c7dbde84c9127afea73ebc5",
-      indexName: "mes0903io",
-    },
+    // docsearch: {
+    //   appId: "",
+    //   apiKey: "",
+    //   indexName: "",
+    // },
 
     // Install @waline/client before enabling it
     // Note: This is for testing ONLY!
