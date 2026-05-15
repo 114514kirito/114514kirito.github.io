@@ -16,7 +16,7 @@ category:
 
 xv6 执行于一颗「multi-core」的 RISC-V 微处理器上，其许多底层功能（例如进程的实现）都依赖于 RISC-V 架构。 RISC-V 是一种 64 位元的 CPU，而 xv6 是使用 "LP64" 模式的 C 语言撰写的，这表示在 C 语言中，`long`（L）与指针（P）是 64 位元，而 `int` 则是 32 位元。 本书假设读者已具备某些架构上机器层级（machine-level）的程序设计经验，并会在需要时介绍与 RISC-V 有关的概念。 完整的 RISC-V 规格可以参考用户层级 ISA 文件与特权层级架构文件。 你也可以参考《The RISC-V Reader: An Open Architecture Atlas》一书
 
-在一台完整的电脑中，CPU 周围会有许多辅助硬件，其中大部分以 I/O 接口的形式存在。 xv6 是针对 qemu 的 `-machine virt` 选项模拟的辅助硬件所撰写的。 这些硬件包括：RAM、一个包含开机程序的 ROM、一条与用户键盘与萤幕相连的序列埠，以及一个用于存储的硬盘
+### 在一台完整的电脑中，CPU 周围会有许多辅助硬件，其中大部分以 I/O 接口的形式存在。 xv6 是针对 qemu 的 `-machine virt` 选项模拟的辅助硬件所撰写的。 这些硬件包括：RAM、一个包含开机程序的 ROM、一条与用户键盘与萤幕相连的序列埠，以及一个用于存储的硬盘
 
 ## 2.1 Abstracting physical resources
 

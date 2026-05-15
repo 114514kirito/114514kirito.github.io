@@ -24,7 +24,7 @@ category:
 
 如后续章节将详细说明的，kernel 会使用 CPU 提供的硬件保护机制（本书使用 CPU 一词来指称执行运算的硬件元件； 其他文件，如 RISC-V 规格，会使用 processor、core 或 hart 等词来代替 CPU），来确保每个在 user space 中执行的进程只能访问自己的内存。 kernel 本身会于具备特权的硬件模式执行，以实现这些保护机制； 而用户程序则在没有这些特权的情况下执行。 当一个用户程序发出系统调用时，硬件会提升执行权限，并开始执行 kernel 中事先安排好的函数
 
-用户程序所能看见的接口由 kernel 提供的所有系统调用组成。 xv6 kernel 提供了一部分传统 Unix kernel 所具备的服务与系统调用。 图 1.2 列出了 xv6 所提供的全部系统调用：
+用户程序所能看见的接口由 kernel 提供的所有系统调用组成。 xv6 kernel 提供了一部分传统 Unix kernel 所具备的服务与系统调用。 图 1.2 列出了 xv6 所提供的全部系统调用：``
 
 <center-panel natural title="（Figure 1.2: xv6 system calls. If not otherwise stated, these calls return 0 for no error, and -1 if there’s an error）">
 
