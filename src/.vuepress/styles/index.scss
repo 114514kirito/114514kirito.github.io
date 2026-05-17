@@ -5,23 +5,16 @@
   }
 }
 
-// 确保粗体中文/日文也能清晰显示
-// CJK 字体通常没有真正的 bold 变体，font-weight: 700 会回退到常规字重。
-// 解决方案：
-//   1. -webkit-text-stroke 在 Chrome/Safari 中为文字添加描边，模拟加粗
-//   2. text-shadow 作为 Firefox 等不支持 text-stroke 的浏览器的回退方案
+// CJK 字体无 bold 变体，用轻微 text-shadow 补强笔画，避免纯黑刺眼
 strong {
-  font-weight: 700;
-  color: #000;
-  -webkit-text-stroke: 0.4px #000;
-  text-shadow: 0 0 0.5px currentColor;
+  font-weight: 650;
+  text-shadow: 0 0 0.3px currentColor;
 }
 
 // 暗色模式
 [data-theme="dark"] strong {
-  color: #f5f5f5;
-  -webkit-text-stroke: 0.4px #f5f5f5;
-  text-shadow: 0 0 0.5px currentColor;
+  font-weight: 650;
+  text-shadow: 0 0 0.3px currentColor;
 }
 
 .posts-expand .post-title-link {
