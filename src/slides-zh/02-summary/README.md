@@ -43,13 +43,13 @@
         fprintf(stderr, "%s <source-file> <destination-file>.\n", argv[0]);
         return kWrongArgumentCount;
       }
-
+    
       int fdin = open(argv[1], /* flags = */ O_RDONLY);
       if (fdin == -1) {
         fprintf(stderr, "%s: source file could not be opened.\n", argv[1]);
         return kSourceFileNonExistent;
       }
-
+    
       int fdout = open(argv[2], /* flags = */ O_WRONLY | O_CREAT | O_EXCL, 0644);
       if (fdout == -1) {
         switch (errno) {
@@ -107,7 +107,7 @@
           fprintf(stderr, "%s: lost access to file while reading.\n", argv[1]);
           return kReadFailure;
         }
-
+    
         size_t bytesWritten = 0;
         while (bytesWritten < bytesRead) {
           ssize_t count = write(fdout, buffer + bytesWritten, bytesRead - bytesWritten);
@@ -118,7 +118,7 @@
           bytesWritten += count;
         }
       }
-
+    
       if (close(fdin) == -1) fprintf(stderr, "%s: had trouble closing file.\n", argv[1]);
       if (close(fdout) == -1) fprintf(stderr, "%s: had trouble closing file.\n", argv[2]);
       return 0;
@@ -172,13 +172,13 @@
         numWritten += write(fd, buffer + numWritten, len - numWritten);
       }
     }
-
+    
     int main(int argc, char *argv[]) {
       int fds[argc];
       fds[0] = STDOUT_FILENO;
       for (size_t i = 1; i < argc; i++)
         fds[i] = open(argv[i], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-
+    
       char buffer[2048];
       while (true) {
         ssize_t numRead = read(STDIN_FILENO, buffer, sizeof(buffer));
@@ -186,7 +186,7 @@
         for (size_t i = 0; i < argc; i++)
           writeall(fds[i], buffer, numRead);
       }
-
+    
       for (size_t i = 1; i < argc; i++) close(fds[i]);
       return 0;
     }
@@ -206,36 +206,38 @@
 **stat vs lstat：符号链接的追踪与不追踪**：这是文件系统 API 中一个微妙但重要的区别。`stat` 会"追踪"（follow）符号链接，返回目标文件的元数据；`lstat` 不追踪，返回符号链接自身的元数据。这两者的区别在实际开发中影响深远——例如 `find` 命令默认使用 `lstat` 来避免陷入符号链接的循环，而 `ls -l` 使用 `lstat` 显示链接本身的权限和信息（而不是目标文件的信息）。如果你想检查一个路径是否是符号链接，必须使用 `lstat` 配合 `S_ISLNK` 宏——用 `stat` 永远检测不到符号链接，因为它已经追踪过去了。
 :::
 
-    * 这两个函数都有手册（`man`）页（例如 `man 2 stat`、`man 2 lstat` 等）
-    * `struct stat` 包含以下字段（[来源](http://pubs.opengroup.org/onlinepubs/7908799/xsh/sysstat.h.html)）
+~~~sh
+* 这两个函数都有手册（`man`）页（例如 `man 2 stat`、`man 2 lstat` 等）
+* `struct stat` 包含以下字段（[来源](http://pubs.opengroup.org/onlinepubs/7908799/xsh/sysstat.h.html)）
 
-    ```sh
-    dev_t     st_dev     包含文件的设备 ID
-    ino_t     st_ino     文件序列号
-    mode_t    st_mode    文件模式
-    nlink_t   st_nlink   指向文件的链接数
-    uid_t     st_uid     文件的用户 ID
-    gid_t     st_gid     文件的组 ID
-    dev_t     st_rdev    设备 ID（如果文件是字符或块特殊文件）
-    off_t     st_size    文件大小（以字节为单位，如果文件是普通文件）
-    time_t    st_atime   最后访问时间
-    time_t    st_mtime   最后数据修改时间
-    time_t    st_ctime   最后状态变更时间
-    blksize_t st_blksize 文件系统为此对象指定的首选 I/O 块大小。
-                         在某些文件系统类型中，这可能
-                         因文件而异
-    blkcnt_t  st_blocks  为此对象分配的块数
-    ```
+```sh
+dev_t     st_dev     包含文件的设备 ID
+ino_t     st_ino     文件序列号
+mode_t    st_mode    文件模式
+nlink_t   st_nlink   指向文件的链接数
+uid_t     st_uid     文件的用户 ID
+gid_t     st_gid     文件的组 ID
+dev_t     st_rdev    设备 ID（如果文件是字符或块特殊文件）
+off_t     st_size    文件大小（以字节为单位，如果文件是普通文件）
+time_t    st_atime   最后访问时间
+time_t    st_mtime   最后数据修改时间
+time_t    st_ctime   最后状态变更时间
+blksize_t st_blksize 文件系统为此对象指定的首选 I/O 块大小。
+                     在某些文件系统类型中，这可能
+                     因文件而异
+blkcnt_t  st_blocks  为此对象分配的块数
+```
 
-    * `st_mode` 字段与其说是一个单一的值，不如说是一个编码了文件类型和权限的多条信息的位集合。
-    * 可以使用一组位掩码和宏从 `st_mode` 字段中提取信息。
-    * 接下来的两个示例——在以下[两](02-filesystems-search.html) [个幻灯片](02-filesystems-list.html)中展示——说明了如何使用 `stat` 和 `lstat` 函数在文件系统中遍历和操作文件树。
+* `st_mode` 字段与其说是一个单一的值，不如说是一个编码了文件类型和权限的多条信息的位集合。
+* 可以使用一组位掩码和宏从 `st_mode` 字段中提取信息。
+* 接下来的两个示例——在以下[两](02-filesystems-search.html) [个幻灯片](02-filesystems-list.html)中展示——说明了如何使用 `stat` 和 `lstat` 函数在文件系统中遍历和操作文件树。
+~~~
 
 ::: tip 重难点解析
 **`st_mode` 位字段的真面目——八进制与按位运算**：`st_mode` 是一个 16 位的 `mode_t` 类型，其各位的实际分配如下（以八进制表示）：
 
-```
-八进制位值:   0170000 (高 4 位 = 文件类型)
+```c
+八进制位值:     0170000 (高 4 位 = 文件类型)
               0004000 (setuid)
               0002000 (setgid)
               0001000 (sticky bit)
@@ -245,6 +247,7 @@
 ```
 
 **文件类型判断的宏展开**——以 `S_ISDIR` 为例：
+
 ```c
 #define S_IFMT   0170000   // 位掩码: 1111 000 000 000 000 (二进制)
 #define S_IFREG  0100000   // 普通文件: 1000 000 000 000 000
@@ -269,45 +272,44 @@ if (st.st_mode & S_IRUSR) printf("r"); else printf("-");
 :::
 
 # 文件系统 API：实现 `search`
-# 文件系统 API：实现 `search`
 
 * `search` 的实现
-    * `search` 是我们自己简化实现的 `find` 内置命令。
+* `search` 是我们自己简化实现的 `find` 内置命令。
 
 ::: tip 重难点解析
 **深度优先遍历与递归**：`search` 程序展示了文件系统遍历的经典模式——深度优先搜索（DFS）。对于每个目录，先处理其中的普通文件，再递归进入子目录。这种遍历方式自然地映射到递归实现：`listMatches` 在处理目录时调用自身。需要注意两点：避免无限递归（跳过 `.` 和 `..` 条目），以及注意递归深度——极端情况下，文件系统嵌套过深可能导致栈溢出。这也是为什么工业级的 `find` 命令会使用迭代而非递归实现。
 :::
 
-    * 下面的 `main` 依赖于 `listMatches`，我们将稍后实现它。（完整的程序在[这里](http://cs110.stanford.edu/autumn-2017/examples/filesystems/search.c)）
+~~~c
+```c
+static void exitUnless(bool test, FILE *stream, int code, const char *control, ...) {
+  if (test) return;
+  va_list arglist;
+  va_start(arglist, control);
+  vfprintf(stream, control, arglist);
+  va_end(arglist);
+  exit(code);
+}
 
-    ```c
-    static void exitUnless(bool test, FILE *stream, int code, const char *control, ...) {
-      if (test) return;
-      va_list arglist;
-      va_start(arglist, control);
-      vfprintf(stream, control, arglist);
-      va_end(arglist);
-      exit(code);
-    }
+int main(int argc, char *argv[]) {
+  exitUnless(argc == 3, stderr, kWrongArgumentCount,
+             "Usage: %s <directory> <pattern>\n", argv[0]);
+  struct stat st;
+  const char *directory = argv[1];
+  stat(directory, &st);
+  exitUnless(S_ISDIR(st.st_mode), stderr, kDirectoryNeeded,
+             "<directory> must be an actual directory, %s is not", directory);
+  size_t length = strlen(directory);
+  if (length > kMaxPath) return 0;
 
-    int main(int argc, char *argv[]) {
-      exitUnless(argc == 3, stderr, kWrongArgumentCount,
-                 "Usage: %s <directory> <pattern>\n", argv[0]);
-      struct stat st;
-      const char *directory = argv[1];
-      stat(directory, &st);
-      exitUnless(S_ISDIR(st.st_mode), stderr, kDirectoryNeeded,
-                 "<directory> must be an actual directory, %s is not", directory);
-      size_t length = strlen(directory);
-      if (length > kMaxPath) return 0;
-
-      const char *pattern = argv[2];
-      char path[kMaxPath + 1];
-      strcpy(path, directory); // no buffer overflow because of above check                  
-      listMatches(path, length, pattern);
-      return 0;
-    }
-    ```
+  const char *pattern = argv[2];
+  char path[kMaxPath + 1];
+  strcpy(path, directory); // no buffer overflow because of above check                  
+  listMatches(path, length, pattern);
+  return 0;
+}
+```
+~~~
 
 # 文件系统 API：`search`（续）
 
@@ -418,7 +420,7 @@ struct dirent {
     static inline void updatePermissionsBit(bool flag, char permissions[], size_t column, char ch) {
       if (flag) permissions[column] = ch;
     }
-
+    
     static const size_t kNumPermissionColumns = 10;
     static const char kPermissionChars[] = {'r', 'w', 'x'};
     static const size_t kNumPermissionChars = sizeof(kPermissionChars);
@@ -428,7 +430,7 @@ struct dirent {
       S_IROTH, S_IWOTH, S_IXOTH  // everyone (other) flags
     };
     static const size_t kNumPermissionFlags = sizeof(kPermissionFlags)/sizeof(kPermissionFlags[0]);
-
+    
     static void listPermissions(mode_t mode) {
       char permissions[kNumPermissionColumns + 1];
       memset(permissions, '-', sizeof(permissions));

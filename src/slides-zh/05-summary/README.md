@@ -26,7 +26,7 @@
         exitIf(pid == -1, kForkFail, stderr, "Fork function failed.\n");
         if (pid == 0) exit(110 + i);
       }
-
+    
       while (true) {
         int status;
         pid_t pid = waitpid(-1, &status, 0);
@@ -37,7 +37,7 @@
           printf("Child %d exited abnormally.\n", pid);
         }
       }
-
+    
       exitUnless(errno == ECHILD, kWaitFail, stderr, "waitpid failed.\n");
       return 0;
     }
@@ -100,7 +100,7 @@ while (true) {
         exitIf(children[i] == -1, kForkFail, stderr, "Fork function failed.\n");
         if (children[i] == 0) exit(110 + i);
       }
-
+    
       for (size_t i = 0; i < kNumChildren; i++) {
         int status;
         exitUnless(waitpid(children[i], &status, 0) == children[i],
@@ -213,7 +213,7 @@ fcntl(fd, F_SETFD, FD_CLOEXEC);
         execvp("/bin/sh", arguments);
         exitIf(true, kExecFailed, stderr, "execvp failed to invoke this: %s.\n", command);        
       }
-
+    
       int status;
       waitpid(pid, &status, 0);
       if (WIFEXITED(status))
@@ -236,7 +236,7 @@ fcntl(fd, F_SETFD, FD_CLOEXEC);
         buf[strlen(buf) - 1] = '\0'; // overwrite '\n'
         printf("retcode = %d\n", mysystem(buf));
       }
-
+    
       printf("\n");
       return 0;
     }
@@ -274,7 +274,7 @@ fcntl(fd, F_SETFD, FD_CLOEXEC);
 **内核管道缓冲区**：Linux 内核为每个管道分配一个环形缓冲区（circular buffer），默认大小为 16 个页面（`PIPE_DEF_BUFFERS = 16` × `PAGE_SIZE = 4KB` = **64KB**）。可以通过 `fcntl(fd, F_SETPIPE_SZ, size)` 调整（上限由 `/proc/sys/fs/pipe-max-size` 控制，通常为 1MB）。
 
 **环形缓冲区结构**（简化）：
-```
+```c
 pipe_inode_info:
   +---------------------------+
   |  buf[] (16 个 struct pipe_buffer 页面指针)  |

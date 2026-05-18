@@ -35,6 +35,7 @@
 Unix v6 文件系统（以及现代 ext2/ext3/ext4）中，每个 inode 包含一个固定大小的指针数组。假设块大小 = 4KB（4096 字节），每个指针 4 字节（32 位块编号），则每个块可存储 1024 个指针。
 
 **标准 inode 布局（以 ext2/ext3 为例）**：
+
 ```
 直接块 (direct blocks):       条目 [0]..[11]  —— 12 个直接指针
 单级间接 (single indirect):   条目 [12]        —— 指向一个装满指针的块
@@ -43,6 +44,7 @@ Unix v6 文件系统（以及现代 ext2/ext3/ext4）中，每个 inode 包含�
 ```
 
 **可达文件大小计算**：
+
 ```c
 #define BLOCK_SIZE  4096          // 4KB
 #define PTRS_PER_BLOCK  (BLOCK_SIZE / 4)  // 1024 个指针/块
