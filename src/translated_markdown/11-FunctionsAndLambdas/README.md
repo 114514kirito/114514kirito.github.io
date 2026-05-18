@@ -90,7 +90,7 @@ bool isVowel(char c) {
 
 bool isPrime(size_t n) {
    if (n < 2) return false;
-   for (auto i = 3; i <= sqrt(n); i++)
+   for (auto i = 2; i <= sqrt(n); i++)
        if (n % i == 0) return false;
    return true;
 }

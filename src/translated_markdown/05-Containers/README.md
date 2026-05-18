@@ -337,7 +337,7 @@ std::set<std::string> set {
 
 #### set 的本质
 
-**std::set 就是一个没有值的 std::map** —— 可以理解为 `std::map<T, void>`。
+**std::set 就是一个没有值的 std::map** —— 两者的底层实现相同（红黑树），set 只存储键而不存储值。
 
 set 同样使用红黑树实现，元素按键（即元素自身）排序。
 

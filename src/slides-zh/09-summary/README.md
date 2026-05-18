@@ -5,8 +5,8 @@
         * 可能会在周日晚发布作业说明和起始仓库，
           请留意网上更新。
     * B&O 阅读：第 12 章，跳过 12.2 节。（第 12 章是
-      读本四个章节中的第四章。）
-    * 我将花 10 到 15 分钟回顾虚拟内存（virtual memory）、页面（pages）、转换后备缓冲器（Translation Lookaside Buffer，TLB）、
+      教材四个章节中的第四章。）
+    * 我将花 10 到 15 分钟回顾虚拟内存（virtual memory）、页面（pages）、TLB（Translation Lookaside Buffer，快表）、
       调度器（schedulers）、上下文切换（context switches）、进程控制块（Process Control Block，PCB）以及就绪和阻塞 PCB 队列。我讨论
       所有这些是因为：
         * 我想让你理解每个进程如何能够像拥有全部内存一样运行，即使

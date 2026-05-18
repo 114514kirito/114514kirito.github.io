@@ -262,7 +262,7 @@ std::sort(set.begin(), set.end());
 
 ```cpp
 // 随机访问迭代器
-std::vector<T>::iterator          // 等价于 T*
+std::vector<T>::iterator          // 概念上类似于 T*（但不保证）
 std::deque<T>::iterator
 
 // 双向迭代器
@@ -317,7 +317,7 @@ std::ostream_iterator<T>          // 输出
 ```
 
 - 对象的地址是其最低字节的位置
-- 例如，一个 `int` 始终占用32位 = 4字节：
+- 例如，在大多数现代平台上，`int` 占用 32 位 = 4 字节：
 
 ```
 int x = 106;  // 32位
@@ -606,5 +606,5 @@ public:
 | `*ptr` | 解引用指针 | `int val = *p;` |
 | `ptr->member` | 通过指针访问成员 | `auto n = p->name;` |
 | `nullptr` | 空指针常量（C++11，替代NULL） | `int* p = nullptr;` |
-| `sizeof(type)` | 获取类型大小（字节） | `sizeof(int) == 4` |
+| `sizeof(type)` | 获取类型大小（字节） | `sizeof(int)` 通常为 4 |
 | `sizeof(var)` | 获取变量大小 | `sizeof(x)` |

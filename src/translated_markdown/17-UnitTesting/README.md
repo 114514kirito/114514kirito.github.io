@@ -25,7 +25,7 @@
 
 > "Unit testing is a test-driven development (TDD) method for evaluating software that pays special attention to an individual component or unit of code—the smallest increment possible" — IBM
 
-单元测试是一种测试驱动开发（TDD）方法，专注于验证**最小的单独代码单元**（通常是单个类或函数）。
+单元测试是一种测试驱动开发（TDD）方法，专注于验证**最小的可独立测试的代码单元**（通常是单个类或函数）。
 
 ### 17.1.2 单元测试 vs. 集成/系统测试
 
@@ -48,7 +48,7 @@
 
 1. **尽早发现 Bug**：单元测试快速且测试小单元，可以在开发中频繁运行
 2. **变更的安全网**：已有单元测试可以即时测试代码的增量变更
-3. **即文档**：单元测试本身就可以作为文档，说明哪些功能已经过测试
+3. **充当文档**：单元测试本身就可以作为文档，说明哪些功能已经过测试
 
 ---
 

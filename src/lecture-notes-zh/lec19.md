@@ -79,11 +79,11 @@ $$\frac{\Pr[B \mid A]}{\Pr[C \mid A]} = \frac{\Pr[A \mid B] \Pr[B]}{\Pr[A \mid C
 
 假设我有一枚有偏硬币（biased coin）（总是正面）和一枚公平硬币（fair coin）（正面概率一半）。我以均匀概率选一枚硬币并掷出正面。选中的硬币是公平的概率是多少？
 
-令 $H$ 为看到正面的事件，$F$ 为选中公平硬币的事件，$B$ 为选中偏置硬币的事件。
+令 $H$ 为看到正面的事件，$F$ 为选中公平硬币的事件，$B$ 为选中有偏硬币的事件。
 
 $$\frac{\Pr[F \mid H]}{\Pr[B \mid H]} = \frac{\Pr[H \mid F] \Pr[F]}{\Pr[H \mid B] \Pr[B]} = \frac{1/2 \cdot 1/2}{1 \cdot 1/2} = 1/2.$$
 
-因此公平硬币的概率是 $1/3$，偏置硬币的概率是 $2/3$。
+因此公平硬币的概率是 $1/3$，有偏硬币的概率是 $2/3$。
 
 术语：$\Pr[A \mid B]$ 称为似然度（likelihood），$\Pr[B]$ 称为先验概率（prior probability），$\Pr[B \mid A]$ 称为后验概率（posterior probability）。
 
@@ -91,7 +91,7 @@ $$\frac{\Pr[F \mid H]}{\Pr[B \mid H]} = \frac{\Pr[H \mid F] \Pr[F]}{\Pr[H \mid B
 
 假设 MIT 社区 10% 的人有新冠（COVID）。检测的假阳性率（false positive rate）为 0.3，假阴性率（false negative rate）为 0.1。如果我检测呈阳性，我患新冠的概率是多少？
 
-- 事件：$H$ 我健康，$S$ 我有病，$+$ 我检测阳性。
+- 事件：$H$ 我健康，$S$ 我患病，$+$ 我检测阳性。
 - 概率：$\Pr[H] = 0.9$，$\Pr[+ \mid H] = 0.3$，$\Pr[- \mid S] = 0.1$。
 - 由此推导：$\Pr[S] = 0.1$，$\Pr[- \mid H] = 0.7$，$\Pr[+ \mid S] = 0.9$。
 

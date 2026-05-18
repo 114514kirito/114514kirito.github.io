@@ -113,7 +113,7 @@ error: no match for 'operator*' (operand types are 'std::string' and 'std::strin
 
 > **核心理念**：在 C++ 中，编译器在翻译阶段就发现两个字符串不能相乘，直接报错。这意味着在编译时就捕获了类型错误，而不是等到运行时。
 
-### 2.3.2 C++ 编译器为什么"啰嗦"？
+### 2.3.2 C++ 编译器为什么这么"冗长"？
 
 因为编译器在处理所有类型信息。当类型的嵌套层次很深时，错误信息会非常冗长：
 
@@ -131,13 +131,13 @@ rtmap.cpp:19: invalid conversion from 'int' to
 
 ### 2.4.1 什么是类型？
 
-类型指的是变量的"类别"。C++ 具有以下内置类型：
+类型指的是变量的"类别"。C++ 具有以下基本类型：
 
 | 类型 | 示例 | 说明 |
 |------|------|------|
 | `int` | `106` | 整数 |
 | `double` | `71.4` | 双精度浮点数 |
-| `string` | `"Welcome to CS106L!"` | 字符串 |
+| `std::string` | `"Welcome to CS106L!"` | 字符串 |
 | `bool` | `true` / `false` | 布尔值 |
 | `size_t` | `12` | 非负整数（通常用于大小和索引） |
 
@@ -166,7 +166,7 @@ def foo(c):
 
 ```cpp
 int a = 3;
-string b = "test";
+std::string b = "test";
 
 void foo(string c)
 {
@@ -258,7 +258,7 @@ return type issueNewID() {
    // 返回类型应该是什么？
 
    // 在 Python 中可以这样：
-   // return "Stanford Tree", "theTREE", 0000002
+   // return "Stanford Tree", "theTREE", 0000002  // 注意：前导 0 表示八进制，这里 0000002₈ = 2₁₀
 }
 ```
 
@@ -268,15 +268,15 @@ return type issueNewID() {
 
 ```cpp
 struct StanfordID {
-   string name;       // 这些叫做字段 (fields)
-   string sunet;      // 每个字段有名称和类型
+   std::string name;       // 这些叫做字段 (fields)
+   std::string sunet;      // 每个字段有名称和类型
    int idNumber;
 };
 
 StanfordID id;                     // 初始化结构体
 id.name = "THE Stanford Tree";     // 用 '.' 访问字段
 id.sunet = "theTREE";
-id.idNumber = 0000002;
+id.idNumber = 0000002  // 注意：前导 0 表示八进制，这里 0000002₈ = 2₁₀;
 ```
 
 ### 2.8.3 返回多个值
@@ -286,7 +286,7 @@ StanfordID issueNewID() {
    StanfordID id;
    id.name = "THE Stanford Tree";
    id.sunet = "theTREE";
-   id.idNumber = 0000002;
+   id.idNumber = 0000002  // 注意：前导 0 表示八进制，这里 0000002₈ = 2₁₀;
    return id;
 }
 ```
@@ -295,7 +295,7 @@ StanfordID issueNewID() {
 
 ```cpp
 // 顺序取决于结构体中字段的顺序，'=' 是可选的
-StanfordID tree = { "THE Stanford Tree", "theTREE", 0000002 };
+StanfordID tree = { "THE Stanford Tree", "theTREE", 0000002  // 注意：前导 0 表示八进制，这里 0000002₈ = 2₁₀ };
 StanfordID lelandjr { "Leland Stanford Jr", "thejunior", 5430282 };
 ```
 
@@ -307,13 +307,13 @@ StanfordID lelandjr { "Leland Stanford Jr", "thejunior", 5430282 };
 
 ```cpp
 struct Name {
-    string first;
-    string last;
+    std::string first;
+    std::string last;
 };
 Name rf = { "Rachel", "Fernandez" };
 
 struct Order {
-    string item;
+    std::string item;
     int quantity;
 };
 Order dozen = { "Eggs", 12 };
@@ -449,7 +449,7 @@ using Solution = std::pair<bool, Zeros>;
 Solution solveQuadratic(double a, double b, double c);
 ```
 
-`using` 就像是类型的"变量"！
+`using` 为类型创建别名，就像给变量起别名一样！
 
 ### 2.13.2 `auto` 关键字
 
@@ -554,7 +554,7 @@ int d = {5};      // 拷贝列表初始化 (Copy List Initialization)
 #include <tuple>
 
 std::tuple<std::string, std::string, int> student =
-    std::make_tuple("Stanford Tree", "theTREE", 0000002);
+    std::make_tuple("Stanford Tree", "theTREE", 0000002  // 注意：前导 0 表示八进制，这里 0000002₈ = 2₁₀);
 
 // 访问
 std::string name = std::get<0>(student);

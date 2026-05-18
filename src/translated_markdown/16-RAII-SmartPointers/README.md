@@ -216,7 +216,7 @@ if (auto sp = weakPtr.lock()) {  // 如果原对象还存在
 
 ```cpp
 // 不好的做法：显式使用 new
-std::unique_ptr<Pet> pet(new Pet("Fido"));           // 两次分配！
+std::unique_ptr<Pet> pet(new Pet("Fido"));           // 直接使用 new（不推荐，异常安全性差）
 std::shared_ptr<Pet> pet2(new Pet("Fido"));          // 两次分配！
 
 // 好的做法：使用 make_ 函数
@@ -403,7 +403,7 @@ target_link_libraries(main PRIVATE my_lib)
 | `reset()` | 释放当前引用 | `p.reset();` |
 | `reset(T*)` | 释放当前引用，接管新指针 | `p.reset(new Foo());` |
 | `use_count()` | 返回引用计数 | `long n = p.use_count();` |
-| `unique()` | 是否唯一拥有 | `if (p.unique())`（C++20 弃用，用 use_count()） |
+| `unique()` | 是否唯一拥有（C++17 弃用，C++20 移除） | `if (p.unique())` — 请用 `use_count() == 1` |
 | `operator*()`, `operator->()` | 解引用，访问成员 | `*p`, `p->method()` |
 | `operator bool()` | 检查是否非空 | `if (p)` |
 

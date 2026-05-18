@@ -80,7 +80,7 @@ numOne is: 12
 numTwo is: 12
 ```
 
-`12.0` 是 `int` 吗？不是。但 C++ 不在乎 —— 使用直接初始化时，它不进行严格的类型检查。
+`12.0` 是 `int` 吗？不是。但使用直接初始化时，C++ 不进行严格的类型检查 —— 允许窄化转换。
 
 ### 3.3.1 问题：窄化转换 (Narrowing Conversion)
 
@@ -288,12 +288,12 @@ std::cout << num << std::endl;  // 输出: 10
 
 ```cpp
 #include <iostream>
-#include <math.h>
+#include <cmath>
 
 // 注意 &
 void squareN(int& n) {
     // 计算 n 的平方
-    n = std::pow(n, 2);
+    n = n * n;  // 不要用 std::pow 做整数平方（可能产生浮点误差）
 }
 
 int main() {
@@ -326,7 +326,7 @@ int main() {
 
 ```cpp
 #include <iostream>
-#include <math.h>
+#include <cmath>
 #include <vector>
 
 void shift(std::vector<std::pair<int, int>> &nums) {
@@ -345,7 +345,7 @@ void shift(std::vector<std::pair<int, int>> &nums) {
 
 ```cpp
 #include <iostream>
-#include <math.h>
+#include <cmath>
 #include <vector>
 
 void shift(std::vector<std::pair<int, int>> &nums) {
@@ -383,14 +383,14 @@ void shift(std::vector<std::pair<int, int>> &nums) {
 | 示例 | `int x = 10;` 中的 `x` | `int x = 10;` 中的 `10` |
 | 示例 | `int y = x;` 中的 `x` | `int y = x;` 中的 `x`（作为右值被读取） |
 
-### 3.9.2 左值和右值的痛苦
+### 3.9.2 左值与右值的难点
 
 ```cpp
 #include <iostream>
-#include <math.h>
+#include <cmath>
 
 void squareN(int& n) {  // n 必须是左值引用
-    n = std::pow(n, 2);
+    n = n * n;  // 不要用 std::pow 做整数平方（可能产生浮点误差）
 }
 
 int main() {
@@ -495,7 +495,7 @@ g++ -std=c++23 main.cpp
 
 - **使用统一初始化** — 它适用于所有类型和对象！
 - **引用**是给变量起别名的方式
-- 只能引用一个左值！
+- 引用只能绑定到左值！
 - **`const`** 是确保不能修改变量的方式
 
 ---

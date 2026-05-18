@@ -97,13 +97,13 @@ valueType& vector<valueType>::back() {
 ```cpp
 // 方案一：抛异常
 valueType& vector<valueType>::back() {
-    if (empty()) throw std::out_of_range;
+    if (empty()) throw std::out_of_range{};
     return *(begin() + size() - 1);
 }
 // 错误时至少会可靠地终止程序
 
 // 方案二：返回 pair（有缺陷）
-std::pair<bool, valueType&> vector<valueType>::back() {
+std::pair<bool, valueType> vector<valueType>::back() {
     if (empty()) {
         return {false, valueType()};  // 需要默认构造！而且开销大！
     }
@@ -208,9 +208,8 @@ void removeOddsFromEnd(vector<int>& vec) {
 
 ```cpp
 void removeOddsFromEnd(vector<int>& vec) {
-    auto isOdd = [](optional<int> num) -> std::optional<bool> {
-        if (!num) return std::nullopt;
-        return *num % 2 == 1;
+    auto isOdd = [](int num) -> std::optional<bool> {
+        return num % 2 == 1;
     };
     while (vec.back().and_then(isOdd)) {
         vec.pop_back();
@@ -267,7 +266,7 @@ valueType& vector<valueType>::operator[](size_t index) {
     return *(begin() + index);        // 不检查，快速
 }
 valueType& vector<valueType>::at(size_t index) {
-    if (index >= size()) throw std::out_of_range;  // 检查，安全
+    if (index >= size()) throw std::out_of_range{};  // 检查，安全
     return *(begin() + index);
 }
 ```
@@ -289,7 +288,7 @@ valueType& vector<valueType>::at(size_t index) {
 Rust、Swift、JavaScript 等语言大量使用 optional/monadic 模式：
 
 - **Rust**：`Option<T>` —— 系统语言，保证内存和线程安全
-- **Swift**：`Optional<T>` —— Apple 的语言，专心为应用开发设计
+- **Swift**：`Optional<T>` —— Apple 的语言，专门为应用开发设计
 - **JavaScript**：可选链（Optional Chaining）`?.`
 
 ### 实际应用场景

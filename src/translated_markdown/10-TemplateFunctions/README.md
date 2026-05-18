@@ -372,15 +372,16 @@ format("Lecture {}: {} (Week {})", 9, "Templates", 5)
 ### 10.6.1 核心思想：在编译时做计算
 
 ```cpp
-// 模板特化：基础情况 N=0
-template <>
-struct Factorial<0> {
-    enum { value = 1 };       // enum：编译时常量
-};
-
+// 主模板（递归情况）
 template <size_t N>
 struct Factorial {
     enum { value = N * Factorial<N - 1>::value };
+};
+
+// 模板特化：基础情况 N=0（必须在主模板之后）
+template <>
+struct Factorial<0> {
+    enum { value = 1 };       // enum：编译时常量
 };
 
 std::cout << Factorial<7>::value << std::endl;  // 输出 5040

@@ -41,8 +41,8 @@ public:
     ~Point();               // 析构函数：清理对象（通常不需要）
     int getX();             // 获取器
     int getY();
-    void setX();            // 设置器
-    void setY();
+    void setX(int x);       // 设置器
+    void setY(int y);
 
 private:                    // 私有成员：只有类内部可见（实现细节）
     int x;
@@ -481,7 +481,7 @@ Entity* entity --> Projectile 对象
 | 灵活的可扩展设计 | 调用方法时需要查虚表（间接调用，比直接调用稍慢） |
 | C++的关键OOP特性 | 编译器无法内联虚函数调用 |
 
-在量化金融等纳秒级重要的行业中，通常不使用虚函数！
+在量化金融等对纳秒级延迟敏感的领域中，通常不使用虚函数！
 
 ---
 

@@ -85,7 +85,7 @@ fout << "I'm writing to this file";
 ```cpp
 std::ifstream fin("data.txt");
 std::string first_word;
-fin >> student_input;  // 存储第一个单词
+fin >> first_word;  // 存储第一个单词
 ```
 
 > 注意到 `<<` 和 `>>` 了吗？这就是抽象在起作用！我们可以用一致的接口来处理输入和输出。
@@ -485,7 +485,7 @@ void cinGetline() {
 
 ## 4.15 重要警告
 
-**你不应该混合使用 `getline()` 和 `std::cin()`！**
+**你不应该混合使用 `getline()` 和 `std::cin`！**
 
 原因在于它们处理数据的差异：
 - `std::cin >>` — 将换行符**留在**缓冲区中
@@ -497,7 +497,7 @@ void cinGetline() {
 
 1. **流**是一个通用的接口，用于在程序中读取和写入数据
 2. **输入流和输出流**在相同的源/目标类型上是互补的
-3. **不要混合使用 `getline()` 和 `std::cin()`**，除非你实在万不得已！
+3. **不要混合使用 `getline()` 和 `std::cin`**，除非确有必要！
 
 ---
 

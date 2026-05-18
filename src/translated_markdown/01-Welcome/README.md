@@ -98,7 +98,7 @@ C++ 向后兼容 C 语言。
 #include "stdio.h"
 #include "stdlib.h"
 
-int main(int argc, char *argv) {
+int main(int argc, char *argv[]) {
     printf("%s", "Hello, world!\n");
     // ^一个 C 函数！
     return EXIT_SUCCESS;
@@ -111,7 +111,7 @@ int main(int argc, char *argv) {
 #include "stdio.h"
 #include "stdlib.h"
 
-int main(int argc, char *argv) {
+int main(int argc, char *argv[]) {
      asm(".LC0:\n\t"
                 ".string \"Hello, world!\"\n\t"
            "main:\n\t"

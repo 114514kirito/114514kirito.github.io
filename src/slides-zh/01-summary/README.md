@@ -46,7 +46,7 @@
     * 第一本教材是 CS107 教材的另一半
         * ["Computer Systems: A Programmer's Perspective"（《深入理解计算机系统》），Bryant 与 O'Hallaron 合著](http://www.amazon.com/Computer-Systems-Programmers-Perspective-Edition/dp/013409266X)
         * 斯坦福书店提供仅包含 CS110 所需四个章节的定制版本
-        * 使用该书第 2 版或第 3 版的读本均可。
+        * 使用该书第 2 版或第 3 版的教材均可。
         * 书中的示例使用 C 语言，但我们会迁移到 C++。（了解两者的优缺点很有好处）
     * 第二本教材更多地涉及宏观系统，而非实现细节
         * ["Principles of Computer System Design: An Introduction"（《计算机系统设计原理：导论》），Jerome H. Saltzer 与 M. Frans Kaashoek 合著](http://www.amazon.com/Principles-Computer-System-Design-Introduction/dp/0123749573)
@@ -62,7 +62,7 @@
 
 * 讲座幻灯片
     * 当我需要传达大量非编码示例驱动的信息时，会使用幻灯片
-    * 大多数讲座都会有。提供时，它们将是动态的，我会注入更新和澄清（并在真正影响你们时明确说明我添加了内容）
+    * 大多数讲座都会有。提供时，它们将是动态的，我会随时补充更新和澄清（并在真正影响你们时明确说明我添加了内容）
     * 它们不能替代参加讲座
         * 我会经常脱离脚本，讨论高层次的概念，你要对讲座中出现的任何内容负责
         * 考试除了编程题外还包含简答题，所以课程的各个方面都会考察

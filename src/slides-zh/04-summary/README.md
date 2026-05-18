@@ -5,7 +5,7 @@
     * 完整的办公时间矩阵已发布在[这里](http://web.stanford.edu/class/cs110/autumn-2017/calendar.html)。
     * 办公时间是提问有关讲座内容和作业说明的好地方，这些问题可能不容易在 Piazza 上解决。
 * 本周阅读材料：
-    * 仔细阅读 Bryant 和 O'Hallaron 的读本，第 2 章（其中大部分你们已经了解：`open`、`read`、`write` 等）和第 1 章（按此顺序）。在本周内慢慢仔细阅读这两章。
+    * 仔细阅读 Bryant 和 O'Hallaron 的教材，第 2 章（其中大部分你们已经了解：`open`、`read`、`write` 等）和第 1 章（按此顺序）。在本周内慢慢仔细阅读这两章。
 * 预计今天将完成文件系统、命名和分层的内容，如果稍早完成，我们将开始多进程和异常控制流。
      * 所有多进程和异常控制流示例可以在 `/usr/class/cs110/lecture-examples/autumn-2017/processes` 中找到。
 

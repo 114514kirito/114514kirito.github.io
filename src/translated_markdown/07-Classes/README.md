@@ -40,7 +40,7 @@ C语言没有对象的概念：
 
 ```cpp
 std::vector<int>      // vector 是一个类
-std::map<string, int> // map 是一个类
+std::map<std::string, int> // map 是一个类
 std::set<double>      // set 是一个类
 ```
 
@@ -412,7 +412,7 @@ private:
 
 ### 10.2 使用建议
 
-- **public 继承**最为常见，它正确建模了 "is-a" 关系
+- **public 继承**最为常见，它正确表达了 "is-a" 关系
   - "一个 Circle 是一个 Shape" -- 直观且合理
 - `protected` 和 `private` 继承较少使用，通常意味着 "is-implemented-in-terms-of" 关系
 
