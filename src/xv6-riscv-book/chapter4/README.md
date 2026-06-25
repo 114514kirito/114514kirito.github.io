@@ -1,6 +1,6 @@
 ---
 title: xv6 riscv book chapter 4：Traps and system calls
-date: 2025-07-31
+date: 2025-07-27
 tag: 
 - OS
 - risc-v
@@ -8,271 +8,187 @@ category:
 - OS
 - risc-v
 ---
+
 # xv6 riscv book chapter 4：Traps and system calls
 
-有三种类型的事件会使 CPU 暂停正常的指令执行流程，并强制转移控制权到一段专门处理该事件的代码。 第一种情况是系统调用，当用户程序执行 `ecall` 指令时，会向 kernel 提出对应的要求。 第二种情况是例外（exception）：某条指令（无论是来自用户或 kernel ）执行了非法操作，例如除以零或使用无效的虚拟地址。 第三种情况是装置中断（interrupt），如某个装置发出信号表示它需要被处理，例如硬盘完成某次读写请求的时候
+There are three kinds of event which cause the CPU to set aside ordinary execution of instructions and force a transfer of control to special kernel code that handles the event. One situation is a system call, when a user program executes the ecall instruction to ask the kernel to do something for it. Another situation is an exception: an instruction (user or kernel) does something illegal, such as load from an invalid virtual address. The third situation is a device interrupt, when a device signals that it needs attention, for example when the disk hardware finishes a read or write request.
 
-本书将上述这些情况统称为「trap」。 通常，发生 trap 时正在执行的代码之后需要能够继续执行，并且不应该察觉到任何特殊的事情发生了。 也就是说，我们通常希望 trap 是透明的； 这一点在处理装置中断时尤其重要，因为被中断的代码通常不会预期到被打断。 一般的处理流程是：trap 发生后控制权会转移到 kernel； kernel 会存储寄存器与其他状态，以便之后能够恢复执行； 接著 kernel 会执行对应的处理程序（例如系统调用的实现或装置驱动程序）； 然后 kernel 会还原先前存储的状态并从 trap 返回； 最后原本的代码会从中断处继续执行
+有三种类型的事件会导致 CPU 暂停普通的指令执行，并强制将控制权转移到处理该事件的特殊内核代码。第一种情况是系统调用，即用户程序执行 ecall 指令请求内核为其执行某些操作。第二种情况是异常：指令（用户或内核）执行了非法操作，例如从无效的虚拟地址加载数据。第三种情况是设备中断，即设备发出信号表示需要处理，例如磁盘硬件完成了读写请求。
 
-xv6 在 kernel 中处理所有的 trap，trap 并不会交由用户程序处理。 将 trap 交由 kernel 处理对于系统调用来说是理所当然的。 而将中断交由 kernel 处理也是合理的，因为有隔离的需求，所以只有 kernel 能够操作装置，而且 kernel 也提供了一个便利的机制，能够让多个进程共享装置。 对于例外来说交由 kernel 处理也合理，因为 xv6 对于所有来自 user space 的例外都会以终止该程序作为响应
+This book uses trap as a generic term for these situations. Typically whatever code was executing at the time of the trap will later need to resume, and shouldn’t need to be aware that anything special happened. That is, we often want traps to be transparent; this is particularly important for device interrupts, which the interrupted code typically doesn’t expect. A trap forces a transfer of control into the kernel; the kernel saves registers and other state so that execution can be resumed; the kernel executes appropriate handler code (e.g., a system call implementation or device driver); the kernel restores the saved state and returns from the trap; and the original code resumes where it left off.
 
-xv6 的 trap 处理流程分为四个阶段：第一阶段是 RISC-V CPU 执行的硬件动作； 第二阶段是一些汇编语言指令，用来为 kernel 的 C 代码做准备； 第三阶段是一个 C 函数，它决定该如何处理这个 trap； 第四阶段则是执行对应的系统调用或装置驱动服务常式
+本书使用“陷阱”（trap）作为这些情况的通用术语。通常，在发生陷阱时正在执行的代码稍后需要恢复运行，并且不应该察觉到发生了任何特殊情况。也就是说，我们通常希望陷阱是透明的；这对于设备中断尤为重要，因为被中断的代码通常无法预料到中断的发生。陷阱会强制将控制权转移到内核中；内核保存寄存器和其他状态以便恢复执行；内核执行相应的处理程序代码（例如系统调用实现或设备驱动程序）；内核恢复保存的状态并从陷阱中返回；最后，原始代码从中断处恢复执行。
 
-尽管这三种 trap 类型有不少共通性，理论上 kernel 可以用一条通用的路径来处理所有 trap，但实务上将其区分为两种情况会更方便：来自 user space 的 trap，与来自 kernel 空间的 trap。 负责处理 trap 的 kernel 代码（不论是组语或 C）通常被称为「handler」； 而最先执行的那几条 handler 指令通常以汇编语言撰写，有时会被称为「vector」
+Xv6 handles all traps in the kernel; traps are not delivered to user code. Handling traps in the kernel is natural for system calls. It makes sense for interrupts since isolation demands that only the kernel be allowed to use devices, and because the kernel is able to share devices among multiple processes. It also makes sense for exceptions since the kernel may be able to handle the exception from user space (for an example see Chapter 5) or respond by killing the offending program.
 
-::: tip  
-这个「vector」也有一些别的名字，如「trap prologue」或「trap entry」等，不过这些应该是口语上的名称，而不是一个正式的名词。 但从另外两个名字你应该可以理解 xv6 中的「vector」就是一个统一的入口，发生 trap 时会先进入「vector」，然后再根据 trap 的种类去调用对应的 handler
+Xv6 在内核中处理所有陷阱；陷阱不会被传递给用户代码。在内核中处理陷阱对于系统调用来说是很自然的。对于中断而言，这同样合理，因为隔离性要求仅允许内核使用设备，且内核能够在多个进程之间共享设备。对于异常而言，这也有其意义，因为内核可能能够处理来自用户空间的异常（示例见第 5 章），或者通过杀死违规程序来做出响应。
 
-具体而言，在 xv6 中有两个「vector」：`uservec` 与 `kernelvec`，它们都是用组语写的函数，两者都只会先将必要的信息存起来，然后调用对应的 C 函数 `usertrap` 与 `kerneltrap`，但这两个 trap handler 的设计不太一样，后面会再提到  
-:::
+Xv6 trap handling proceeds in four stages: hardware actions taken by the RISC-V CPU, some assembly instructions that prepare the way for kernel C code, a C function that decides what to do with the trap, and the system call or device-driver service routine. While commonality among the three trap types suggests that a kernel could handle all traps with a single code path, it turns out to be convenient to have separate code for two distinct cases: traps from user space, and traps from kernel space. Kernel code (assembler or C) that processes a trap is often called a handler; the first handler instructions are usually written in assembler (rather than C ) and are sometimes called a vector.
+
+Xv6 的陷阱处理分为四个阶段：RISC-V CPU 执行的硬件操作、为内核 C 代码做准备的一些汇编指令、一个决定如何处理陷阱的 C 函数，以及系统调用或设备驱动服务程序。虽然三种陷阱类型之间的共同点表明内核可以用单一代码路径处理所有陷阱，但事实证明，为两种不同情况编写独立的代码更为方便：来自用户空间的陷阱和来自内核空间的陷阱。处理陷阱的内核代码（汇编或 C）通常被称为处理程序（handler）；处理程序的第一条指令通常用汇编（而非 C）编写，有时被称为向量（vector）。
+
+Before proceeding, please read kernel/trampoline.S, and usertrap() and prepare_return() in kernel/trap.c.
+
+在继续之前，请阅读 kernel/trampoline.S，以及 kernel/trap.c 中的 usertrap() 和 prepare_return()。
 
 ## 4.1 RISC-V trap machinery
 
-每个 RISC-V CPU 都有一组控制寄存器，kernel 会写入这些寄存器以告诉 CPU 该如何处理 trap，并且 kernel 也可以读取这些寄存器来得知 trap 的相关信息，RISC-V 的官方文件中有完整的说明<sup>[[1]](#1)</sup>。 riscv.h（[kernel/riscv.h:1](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/riscv.h#L1)）中包含了 xv6 使用的相关定义。 以下是几个最重要的寄存器简介：
+Each RISC-V CPU has a set of hardware control registers that the kernel writes to tell the CPU how to handle traps, and that the kernel can read to find out about a trap that has occurred. The RISC-V documents contain the full story [3]. riscv. h(0500) contains definitions that xv6 uses. Here’s an outline of the most important registers:
 
-- `stvec`：  
-  - kernel 会在这里写入 trap handler 的地址； 当发生 trap 时，RISC-V 会跳到 `stvec` 所指定的地址执行处理该 trap 的 handler
-- `sepc`：  
-  - 当发生 trap 时，RISC-V 会将当下的程序计数器（`pc`）存储在此处（因为 `pc` 随即会被 `stvec` 的值覆盖）。 `sret`（从 trap 返回的指令）会将 `sepc` 的内容复制回 `pc`。 kernel 也可以通过写入 `sepc` 来控制 `sret` 返回的位置
-- `scause`：  
-  - RISC-V 会在此处写入一个数值，描述这次 trap 的原因
-- `sscratch`：  
-  - trap handler 代码会使用 `sscratch` 来协助避免用户的寄存器尚未被存储前就被覆写
-- `sstatus`：  
-  - 此寄存器中的 SIE 位元控制装置中断是否启用。 如果 kernel 清除此位元，RISC-V 将会延后处理装置中断直到 kernel 再次设置它。 SPP 位元表示这次 trap 是从 user mode 还是 supervisor mode 进入的，并决定 `sret` 返回的模式
+每个 RISC-V CPU 都有一组硬件控制寄存器，内核通过写入这些寄存器来告知 CPU 如何处理陷阱，并通过读取这些寄存器来了解已发生的陷阱。RISC-V 文档包含了完整的内容 [3]。riscv.h (0500) 包含了 xv6 使用的定义。以下是最重要寄存器的概述：
 
-上述的这些都是 supervisor mode 下与处理 trap 有关的寄存器，并且在 user mode 中无法读写这些寄存器。 multi-core 晶片上的每个 CPU 都各有一组这些寄存器，并且任一时刻下都可能有多个 CPU 同时在处理 trap
+- stvec: The kernel writes the address of its trap handler code here; the RISC-V jumps to the address in stvec to handle a trap.
+  stvec：内核在此处写入其陷阱处理程序（trap handler）代码的地址；RISC-V 通过跳转到 stvec 中的地址来处理陷阱。
+- sepc: When a trap occurs, RISC-V saves the program counter here (since the pc is then overwritten with the value in stvec). The sret (return from trap) instruction copies sepc to the pc. The kernel can write sepc to control where sret goes.
+  sepc：当陷阱发生时，RISC-V 会将程序计数器（pc）保存到此处（因为随后 pc 会被 stvec 中的值覆盖）。sret（从陷阱返回）指令会将 sepc 复制回 pc。内核可以通过写入 sepc 来控制 sret 返回的位置。
+- scause: RISC-V puts a number here that describes the reason for the trap.
+  scause：RISC-V 在此处放置一个数字，用于描述发生陷阱的原因。
+- sscratch: The kernel trap handler code uses sscratch to help it avoid overwriting user registers before saving them.
+  sscratch：内核陷阱处理程序代码使用 sscratch 来辅助其在保存用户寄存器之前避免覆盖它们。
+- sstatus: The SIE bit in sstatus controls whether device interrupts are enabled. If the kernel clears SIE, the RISC-V will defer device interrupts until the kernel sets SIE. The SPP bit indicates whether a trap came from user mode or supervisor mode, and controls to what mode sret returns.
+  sstatus：sstatus 中的 SIE 位控制是否启用设备中断。如果内核清除 SIE，RISC-V 将推迟设备中断，直到内核重新设置 SIE。SPP 位指示陷阱是来自用户模式还是特权模式（supervisor mode），并控制 sret 返回到哪种模式。
 
-当需要强制进入 trap 时，RISC-V 硬件会对所有 trap 类型执行以下动作：
+The above registers can only be accessed in supervisor mode (i.e., by the kernel); the CPU prevents user code from reading or writing them.
 
-1. 如果这次 trap 来自装置中断，且 `sstatus` 的 SIE 位元为清除状态，则不执行以下步骤
-2. 清除 `sstatus` 中的 SIE 位元以关闭中断
-3. 将 `pc` 的值复制到 `sepc`
-4. 将当前的模式（user 或 supervisor）存储在 `sstatus` 的 SPP 位元中
-5. 将 `scause` 设置为此次 trap 的原因
-6. 将执行模式设为 supervisor
-7. 将 `stvec` 的值复制到 pc
-8. 从新的 `pc` 开始执行
+上述寄存器只能在主管模式（即由内核）访问；CPU 会阻止用户代码对其进行读写。
 
-请注意，CPU 不会在 trap 发生时自动切换到 kernel 的 page table，也不会切换到 kernel stack，除了 `pc` 外也不会存储任何其他寄存器。 这些任务必须由 kernel 的软件来执行，CPU 在处理 trap 时只做最少的工作，主要是为了让软件有更多弹性； 例如，有些操作系统会在特定情况下省略切换 page table，以提升 trap 的效能
+Each CPU on a multi-core chip has its own set of these registers, and more than one CPU may be handling a trap at any given time.
 
-值得思考的是我们能否省略上述步骤中的某些部分，以更快速的处理 trap。 虽然在某些情况下简化流程是可行的，但上方大多数的步骤若被省略会造成危险。 例如，假设 CPU 没有切换程序计数器，那么来自 user space 的 trap 就可能在仍执行用户指令的情况下进入 supervisor 模式。 这些用户指令可能会破坏用户与 kernel 之间的隔离，例如修改 `satp` 寄存器指向允许访问整个物理内存的 page table。 因此，CPU 切换到 kernel 所指定的指令地址（即 `stvec`）是非常重要的
+多核芯片上的每个 CPU 都有自己的一套此类寄存器，并且在任何给定时间，可能有一个以上的 CPU 正在处理陷阱（trap）。
+
+When it forces a trap, the RISC-V hardware does the following:
+
+当强制触发陷阱（trap）时，RISC-V 硬件会执行以下操作：
+
+1. If the trap is a device interrupt, and the sstatus SIE bit is clear, don’t do any of the following.
+   如果该陷阱是设备中断，且 sstatus 中的 SIE 位为清除状态（0），则不执行以下任何操作。
+2. Disable interrupts by clearing the SIE bit in sstatus.
+   通过清除 sstatus 中的 SIE 位来禁用中断。
+3. Copy the pc to sepc.
+   将 pc 的值复制到 sepc。
+4. Save the current mode (user or supervisor) in the SPP bit in sstatus.
+   将当前模式（用户模式或内核模式）保存到 sstatus 的 SPP 位中。
+5. Set scause to a number indicating the trap’s cause.
+   将 scause 设置为指示陷阱（trap）原因的编号。
+6. Set the mode to supervisor.
+   将模式设置为主管模式（supervisor mode）。
+7. Copy stvec to the pc.
+   将 stvec 复制到程序计数器（pc）。
+8. Start executing at the new pc.
+   从新的 pc 开始执行。
+
+
+The CPU doesn’t switch to the kernel page table, doesn’t switch to a stack in the kernel, and doesn’t save any registers other than the pc. Kernel software must perform these tasks. One reason that the CPU does minimal work during a trap is to provide flexibility to software; for example, some operating systems omit a page table switch in some situations to increase trap performance.
+
+CPU 不会切换到内核页表，不会切换到内核栈，也不会保存除程序计数器（pc）以外的任何寄存器。内核软件必须执行这些任务。CPU 在陷阱（trap）期间仅执行最少工作的一个原因是为软件提供灵活性；例如，某些操作系统在某些情况下会省略页表切换，以提高陷阱处理性能。
+
+It’s worth thinking about whether any of the steps listed above could be omitted, perhaps in search of faster traps. Though there are situations in which a simpler sequence can work, many of the steps would be dangerous to omit in general. For example, suppose that the CPU didn’t switch program counters. Then a trap from user space could switch to supervisor mode while still running user instructions. Those user instructions could break user/kernel isolation, for example by modifying the satp register to point to a page table that allowed accessing all of physical memory. It is thus important that the CPU switch to a kernel-specified instruction address, namely stvec.
+
+值得思考的是，上述步骤中是否有任何步骤可以省略，或许是为了追求更快的陷阱处理速度。虽然在某些情况下更简单的序列也能奏效，但通常情况下，省略其中许多步骤将是危险的。例如，假设 CPU 不切换程序计数器。那么来自用户空间的陷阱可能会在仍然运行用户指令的同时切换到特权模式（supervisor mode）。这些用户指令可能会破坏用户/内核隔离，例如通过修改 satp 寄存器使其指向一个允许访问所有物理内存的页表。因此，CPU 切换到内核指定的指令地址（即 stvec）至关重要。
 
 ## 4.2 Traps from user space
 
-xv6 会根据 trap 发生时是在 kernel space 中还是 user space 中而采取不同的处理方式。 这段会讲述从 user code 发出的 trap 的流程； 至于 kernel code 发出的 trap，则会在第 4.5 节中说明
+Xv6 handles traps differently depending on whether the trap occurs while executing in the kernel or in user code. Here is the story for traps from user code; Section 4.5 describes traps from kernel code.
 
-当线程正在 user space 执行时，如果 user program 发出了系统调用（通过 `ecall` 指令）、做了不合法的操作，或有装置中断发生，就可能会发生 trap。 从 user space 发出的 trap，其高阶的处理路径为：先进入 `uservec`（[kernel/trampoline.S:22](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trampoline.S#L22)），接著进入 `usertrap`（[kernel/trap.c:37](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L37)）； 在处理完要返回 user space 时，会先经过 `usertrapret`（[kernel/trap.c:90](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L90)），最后再通过 `userret`（[kernel/trampoline.S:101](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trampoline.S#L101)）回到 user program
+Xv6 处理陷阱的方式取决于陷阱是发生在内核执行期间还是用户代码执行期间。以下是来自用户代码的陷阱处理过程；第 4.5 节描述了来自内核代码的陷阱。
 
-xv6 的 trap 处理机制在设计上有个主要限制：RISC-V 硬件在触发 trap 时并不会自动切换 page table。 这表示 `stvec` 中指向的 trap handler 地址，必须在 user page table 中有一个有效的映射，因为 trap 发生时仍是使用 user 的 page table 来执行。 此外，xv6 的 trap handler 还需要切换到 kernel 的 page table； 而为了让 trap handler 在切换后能继续执行，kernel page table 也必须对 `stvec` 所指向的 handler 有一份映射
+A trap may occur while executing in user space if the user program makes a system call (ecall instruction), or does something illegal, or if a device interrupts. As shown in Figure 4.1, the highlevel path of a trap from user space is uservec (3071), then usertrap (3337); and when the kernel is ready to return, usertrap returns to userret (3151) which executes sret to user space.
 
-xv6 通过 trampoline page 来满足这些需求。 trampoline page 包含了 `uservec`，也就是 `stvec` 所指向的 trap handler。 xv6 会在每个 process 的 page table 中，将 trampoline page 映射到 `TRAMPOLINE` 这个地址； 这个地址在虚拟地址空间的最顶端，因此会高于 program 自己所使用的内存范围
+如果用户程序执行系统调用（ecall 指令）、执行非法操作或发生设备中断，则在用户空间执行时可能会发生陷阱。如图 4.1 所示，来自用户空间的陷阱的高层路径是 uservec (3071)，然后是 usertrap (3337)；当内核准备返回时，usertrap 返回到 userret (3151)，后者执行 sret 返回到用户空间。
 
-同时，trampoline page 也会在 kernel 的 page table 中被映射到相同的 `TRAMPOLINE` 地址，详情可参考图 2.3 和图 3.3。 因为 trampoline page 有被映射进 user page table，且因为其在 kernel 的 page table 中也有映射，所以在发生 trap 而切换到 supervisor mode 时，handler 切换 page table 后仍能从该处继续执行
+A major constraint on the design of xv6’s trap handling is the fact that the RISC-V hardware does not switch page tables when it forces a trap. This means that the trap handler address in stvec must have a valid mapping in the user page table, since that’s the page table in force when the trap handling code starts executing. Furthermore, xv6’s trap handling code needs to switch to the kernel page table; in order to be able to continue executing after that switch, the kernel page table must also have a mapping for the handler pointed to by stvec.
 
-::: tip  
-这个被称为 trampoline 的共享 page 会被映射进所有 process 的 user page table 和 kernel page table，而且都是映射到同一个虚拟地址。 这样在 trap 发生时（使用 user page table）能进入 trampoline，而在 handler 中切换到 kernel page table 之后也不会失效，保证了执行的连贯性
+xv6 中断处理设计的一个主要限制在于，RISC-V 硬件在强制触发中断时不会切换页表。这意味着中断处理程序的地址必须在stvec 必须在用户页表中有一个有效的映射，因为当陷阱处理代码开始执行时，该页表正是当时生效的页表。此外，xv6 的陷阱处理代码需要切换到内核页表；为了在切换后能够继续执行，内核页表也必须为 stvec 指向的处理程序提供映射。
 
-Remark：
+Xv6 satisfies these requirements using a trampoline page. This page contains uservec, the xv6 trap handling code that stvec points to. The trampoline page is mapped in every process’s page table at virtual address (called trampoline), which is the last page in the virtual address space so that it will be above memory that programs use for themselves. The trampoline page is mapped at the same virtual address in the kernel page table. See Figure 2.3 and Figure 3.3. Because the trampoline page is mapped in the user page table, traps can start executing there in supervisor mode. Because the trampoline page is mapped at the same address in the kernel address space, the trap handler can continue to execute after it switches to the kernel page table.
 
-- root kernel page table 是全域唯一的，整个系统中只有一张
-  - 任何 hart 只要处于 supervisor mode、且在执行 kernel 代码时，`satp` 就指到这张表
-  - 使用 direct mapping（VA == PA）
-- root user page table 则是每个 process 都自己有一张
-  
-:::
+Xv6 通过使用一个“跳板”（trampoline）页来满足这些要求。该页面包含 uservec，即 stvec 指向的 xv6 陷阱处理代码。跳板页映射在每个进程页表的虚拟地址 （称为 TRAMPOLINE）处，这是虚拟地址空间中的最后一个页面，因此它位于程序自身使用的内存之上。跳板页在内核页表中也映射在相同的虚拟地址处。参见图 2.3 和图 3.3。由于跳板页映射在用户页表中，陷阱可以在监管者模式（supervisor mode）下开始在那里执行。由于跳板页在内核地址空间中映射在相同的地址，陷阱处理程序在切换到内核页表后可以继续执行。
 
-`uservec` 这段 trap handler 的代码写在 trampoline.S（[kernel/trampoline.S:22](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trampoline.S#L22)）中。 当 `uservec` 开始执行时，32 个寄存器都还保留著被中断的 user code 的值。 这 32 个值需要被存到内存中，好让 kernel 在返回 user space 之前可以将它们还原。 但要把东西存到内存中，势必得有一个寄存器来存放内存的地址，然而此时却没有任何通用寄存器可以用，对此 RISC-V 提供了一个解法：`sscratch` 寄存器。 `uservec` 开头的 `csrw` 指令会先把 `a0` 存进 `sscratch`，这样 `uservec` 就可以暂时直接使用 `a0` 了
+The code for the uservec trap handler is in trampoline. S(3071). When uservec starts, all 32 registers contain values owned by the interrupted user code. These 32 values need to be saved somewhere in memory, so that later on the kernel can restore them before returning to user space. Storing to memory requires use of a register to hold the store’s destination address, but at this point there are no general-purpose registers available! Luckily RISC-V provides a helping hand in the form of the sscratch register. The csrw instruction at the start of uservec saves a 0 in sscratch. Now uservec has one register (a 0 ) to play with. uservec’s next task is to save the 32 user registers. The kernel allocates, for each process, a page of memory for a trapframe structure that (among other things) has space to save the 32 user registers (1992). Because satp still refers to the user page table, uservec needs the trapframe to be mapped in the user address space. Xv6 maps each process’s trapframe at virtual address TRAPFRAME ( ) in that process’s user page table; one page below TRAMPOLINE. Each process’s p->trapframe contains a kernel virtual address for the process’s trapframe. uservec sets register a 0 to address TRAPFRAME and saves all the user registers there. Then it retrieves the user a 0 from sscratch and saves it in the trapframe.
 
-`uservec` 接下来要做的事，就是把 32 个用户寄存器全部存起来。 kernel 为每个 process 都分配了一个 page 给 `trapframe` 结构体，用来保存这些寄存器的值（[kernel/proc.h:43](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.h#L43)）。 由于现在 `satp` 还是指向 user page table，`uservec` 访问内存时，trapframe 必须要有对应的 user space 映射。 xv6 会在每个 process 的 user page table 中，把 `trapframe` 映射到 `TRAPFRAME` 这个虚拟地址，而这个地址就在 `TRAMPOLINE` 的正下方。 此外，process 的 `p->trapframe` 指针也会指向该 trapframe，不过是指向其实体地址，这样 kernel 就能通过 kernel page table 访问它
+uservec 陷阱处理程序的代码位于 trampoline.S (3071) 中。当 uservec 开始运行时，所有 32 个寄存器都包含被中断的用户代码所拥有的值。这 32 个值需要保存到内存中的某个地方，以便稍后内核在返回用户空间之前可以恢复它们。向内存存储数据需要使用一个寄存器来保存存储的目标地址，但此时没有可用的通用寄存器！幸运的是，RISC-V 以 sscratch 寄存器的形式提供了帮助。uservec 开头的 csrw 指令将 a0 的值保存在 sscratch 中。现在 uservec 有一个寄存器（a0）可以使用了。uservec 的下一个任务是保存 32 个用户寄存器。内核为每个进程分配一个内存页作为 trapframe 结构，该结构（除其他内容外）有空间保存 32 个用户寄存器 (1992)。由于 satp 仍然指向用户页表，uservec 需要将 trapframe 映射在用户地址空间中。Xv6 将每个进程的 trapframe 映射在该进程用户页表的虚拟地址 TRAPFRAME ( ) 处；即 TRAMPOLINE 下方的一个页面。每个进程的 p->trapframe 包含该进程 trapframe 的内核虚拟地址。uservec 将寄存器 a0 设置为地址 TRAPFRAME，并将所有用户寄存器保存在那里。然后，它从 sscratch 中取回用户的 a0 值，并将其保存在 trapframe 中。
 
-因此 `uservec` 会将 `TRAPFRAME` 的地址加载到 `a0` 中，并将所有 user 寄存器的值存到那个位置，其中也包含刚刚存入 `sscratch` 内的 user 的 `a0` 值。 `trapframe` 中会包含当前 process 的 kernel stack 地址、目前 CPU 的 hartid、`usertrap` 函数的地址，以及 kernel page table 的地址。 `uservec` 会从中读出这些信息，接著把 `satp` 切换成 kernel page table，然后跳到 `usertrap`
+The kernel previously initialized the trapframe to contain some values useful to uservec: the address of the current process’s kernel stack, the current CPU’s hartid, the address of the usertrap function, and the address of the kernel page table. uservec retrieves these values, switches satp to the kernel page table, and jumps to usertrap, a C function.
 
-::: tip  
-`TRAMPOLINE` 和 `TRAPFRAME` 是两个已经被写死的 macro（[kernel/memlayout.h:44](https://github.com/mit-pdos/xv6-riscv/blob/riscv/kernel/memlayout.h#L44),[59](https://github.com/mit-pdos/xv6-riscv/blob/riscv/kernel/memlayout.h#L59)），换句话说每个 process 中 `TRAMPOLINE` 和 `TRAPFRAME` 的虚拟地址都是相同的。 区别在于对于不同的 process，`TRAMPOLINE` 都会对应到同一个 page frame，但对于不同的 process，`TRAPFRAME` 则会对应到不同的 page frame  
-:::
+内核此前已初始化了 trapframe，使其包含一些对 uservec 有用的值：当前进程内核栈的地址、当前 CPU 的 hartid、usertrap 函数的地址以及内核页表的地址。uservec 获取这些值，将 satp 切换为内核页表，并跳转到 C 函数 usertrap。
 
-`usertrap` 的工作是判断 trap 的原因、处理它，然后返回（[kernel/trap.c:37](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L37)）。 它一开始会修改 `stvec`，这样之后 kernel 里如果再次发生 trap，就会进入 `kernelvec` 而不是 `uservec`。 接著会存储 `sepc` 寄存器（也就是用户程序的 PC），因为 `usertrap` 有可能调用 `yield` 去切换到其他 process 的 kernel thread，而那个 process 在切换回 user space 时会改写 `sepc`
+The job of usertrap is to determine the cause of the trap, process it, and return (3337). It first changes stvec so that a trap while in the kernel will be handled by kernelvec rather than uservec. It saves the sepc register (the saved user program counter) for future use when returning back to user space. If the trap is a system call, usertrap calls syscall to handle it; if a device interrupt, devintr; if a page fault, vmfault; otherwise it’s an exception (e.g., use of an invalid address), and the kernel kills the faulting process. The system call path adds four to the saved user program counter because RISC-V, in the case of a system call, leaves the program pointer pointing to the ecall instruction but user code needs to resume executing at the subsequent instruction. usertrap checks if the process has been killed or should yield the CPU (if this trap is a timer interrupt).
 
-如果该 trap 是系统调用，`usertrap` 会调用 `syscall` 处理它； 如果是装置中断，就调用 `devintr`； 其他情况就是例外，kernel 会把出错的 process 给 kill 掉。 系统调用的情况下，还会将存储的 PC 加上 4，因为 RISC-V 的 `ecall` trap 发生后，`sepc` 仍会指向 `ecall` 那行指令，但 user code 恢复执行时需要从下一行继续执行。 处理完要离开时，`usertrap` 会检查这个 process 是否已经被 kill 了，或如果这次是 timer 中断的话，是否应该交出 CPU
+usertrap 的任务是确定陷阱（trap）的原因，对其进行处理并返回 (3337)。它首先修改 stvec，以便在内核中发生的陷阱由 kernelvec 而非 uservec 处理。它保存 sepc 寄存器（保存的用户程序计数器），以便后续返回用户空间时使用。如果陷阱是系统调用，usertrap 调用 syscall 来处理；如果是设备中断，则调用 devintr；如果是缺页异常，则调用 vmfault；否则它就是一个异常（例如使用无效地址），内核将杀死产生故障的进程。系统调用路径会将保存的用户程序计数器加 4，因为在发生系统调用时，RISC-V 会让程序指针指向 ecall 指令，但用户代码需要从下一条指令恢复执行。usertrap 还会检查进程是否已被杀死或是否应该让出 CPU（如果该陷阱是定时器中断）。
 
-要返回 user space 的第一步是调用 `usertrapret`（[kernel/trap.c:90](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L90)），这个函数会设置 RISC-V 的控制寄存器，为之后从 user space 发生的 trap 做准备：包含将 `stvec` 设为 `uservec`，以及准备好 `uservec` 会用到的 trapframe 栏位。 `usertrapret` 也会把 `sepc` 复原为先前存储的用户程序计数器。 最后，`usertrapret` 会调用 `userret`，`userret` 这段代码也位在 trampoline page 上，且因为 `userret` 的组语程序会切换 page table，所以其会同时映射在 user 和 kernel page table 中
+The first step in returning to user space is the call to prepare_return (3404). This function sets up the RISC-V control registers to prepare for a future trap from user space: setting stvec to uservec and preparing the trapframe fields that uservec relies on. prepare_return sets sepc to the previously saved user program counter. Finally, usertrap returns back to userret in the trampoline page (3151), passing back a pointer to the user page table in a 0 . userret switches satp to the process’s user page table. Recall that the user page table maps both the trampoline page and TRAPFRAME, but nothing else from the kernel. The trampoline page mapping at the same virtual address in user and kernel page tables allows userret to keep executing after changing satp. From this point on, the only data userret can use is the register contents and the content of the trapframe. userret loads the TRAPFRAME address into a 0 , restores saved user registers from the trapframe via a 0 , restores the saved user a 0 , and executes sret to return to user space. uservec and userret are written in assembly language because it is difficult to write C code to save or restore all the registers or survive switching page tables.
 
-`usertrapret` 调用 `userret` 时，会把 process 的 user page table 地址传入 `a0`（[kernel/trampoline.S:101](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trampoline.S#L101)），`userret` 会将 `satp` 设成这份 user page table，记得 user page table 中的 kernel 区段只有 trampoline page 和 `TRAPFRAME` 会被映射，其他 kernel 区段都不会被映射
-
-而 trampoline page 在 user 和 kernel page table 中拥有相同的虚拟地址，且映射到相同的实体地址，因此即使在这之后切换了 `satp`，`userret` 也还能继续执行，在这之后 `userret` 就只能访问寄存器内容与 trapframe 的内容，`userret` 会将 `TRAPFRAME` 地址加载到 `a0`，用它来还原先前存下的用户寄存器，还原用户的 `a0`，最后执行 `sret` 指令返回 user space
-
-::: tip  
-`usertrapret` 调用 `userret` 的这段代码为：
-
-```c
-// tell trampoline.S the user page table to switch to.
-uint64 satp = MAKE_SATP(p->pagetable);
-
-// jump to userret in trampoline.S at the top of memory, which 
-// switches to the user page table, restores user registers,
-// and switches to user mode with sret.
-uint64 trampoline_userret = TRAMPOLINE + (userret - trampoline);
-((void (*)(uint64))trampoline_userret)(satp);
-```
-
-其中 `TRAMPOLINE` 为固定的 macro，值为 `0x3FFFFFF000`，这是一个固定的虚拟地址。 而 `userret` 与 `trampoline` 为定义在 trampoline.S 中的标签地址，可以通过 nm 或 objdump 来看到具体的值：
-
-```
-mes@MesDesktop:~/xv6-riscv$ nm kernel/kernel | grep -E "(trampoline|userret)"
-0000000080006000 T _trampoline
-0000000080006000 T trampoline
-000000008000609c T userret
-mes@MesDesktop:~/xv6-riscv$ objdump -t kernel/kernel | grep -E "(trampoline|userret)"
-0000000080006000 g       .text  0000000000000000 trampoline
-000000008000609c g       .text  0000000000000000 userret
-0000000080006000 g       .text  0000000000000000 _trampoline
-```
-
-因此 `trampoline` 的值为 `0x80006000`，`userret` 的值为 `0x8000609c`，这两者也都为虚拟地址。 但注意这里准备把 `satp` 换掉了，用的是 user page table，因此在 `userret` 内是「无法使用 direct mapping」的，也因此无法直接使用 `0x8000609c` 这个地址，就算他就是实际上的实体地址，但 user page table 内搞不好根本就没有 `0x8000609c` 的这段映射，或是它可能会映射到其他 page frame
-
-而前面有提到 trampoline page 会同时存在于 kernel 和 user 的 page table 中，这是 kernel page table 中加的 PTE：
-
-```c
-// map the trampoline for trap entry/exit to
-// the highest virtual address in the kernel.
-kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
-```
-
-这是 user page table 中加的 PTE：
-
-```c
-// Create a user page table for a given process, with no user memory,
-// but with trampoline and trapframe pages.
-pagetable_t
-proc_pagetable(struct proc *p)
-{
-  ...
-  // map the trampoline code (for system call return)
-  // at the highest user virtual address.
-  // only the supervisor uses it, on the way
-  // to/from user space, so not PTE_U.
-  if(mappages(pagetable, TRAMPOLINE, PGSIZE,
-              (uint64)trampoline, PTE_R | PTE_X) < 0){
-    uvmfree(pagetable, 0);
-    return 0;
-  }
-  ...
-}
-```
-
-可以看到两者会把 `TRAMPOLINE` 这个虚拟地址映射到同一个实体地址（`trampoline`）。 所以这边用了 `TRAMPOLINE` 来走 Sv39 的路线将虚拟地址转实体地址。 通过 `(userret - trampoline)` 求出偏移量，再加上 `TRAMPOLINE`，就可以得到位于 trampoline page 内的 VM 了，其值为 `0x3FFFFFF000 + 0x9c = 0x3FFFFFF09C`，通过 Sv39 的转换，可以得到其值就为 `trampoline = 0x8000609c`
-
-这边比较容易卡住的点是 trampoline page 在 kernel page table 中有另外一种路径是可以走 direct mapping 的。 换句话说如果 `satp` 指向的是 kernel page table，则 `trampoline` 和 `userret` 的值就同时代表了虚拟地址与实体地址，因为这两个地址处于 kernel RAM 区段（`0x80000000` 至 `0x88000000`，见图 3.3），因此在 kernel page table 中使用的是 direct mapping。 然而由于在 `userret` 的上下文忠 `satp` 指向的是 user page table，不能使用 direct mapping，所以才要绕这么大一圈去计算实体地址  
-:::
+返回用户空间的第一步是调用 prepare_return (3404)。该函数prepare_return 设置 RISC-V 控制寄存器，为未来来自用户空间的陷阱做准备：将 stvec 设置为 uservec，并准备 uservec 所依赖的 trapframe 字段。prepare_return 将 sepc 设置为之前保存的用户程序计数器。最后，usertrap 返回到 trampoline 页中的 userret (3151)，并将指向用户页表的指针通过 a0 传递回去。userret 将 satp 切换为进程的用户页表。回想一下，用户页表映射了 trampoline 页和 TRAPFRAME，但没有映射内核的其他任何内容。trampoline 页在用户页表和内核页表中映射到相同的虚拟地址，这使得 userret 在更改 satp 后能继续执行。从此时起，userret 唯一能使用的数据是寄存器内容和 trapframe 的内容。userret 将 TRAPFRAME 地址加载到 a0，通过 a0 从 trapframe 中恢复保存的用户寄存器，恢复保存的用户 a0，最后执行 sret 返回用户空间。uservec 和 userret 是用汇编语言编写的，因为很难编写 C 代码来保存或恢复所有寄存器，或者在切换页表后继续运行。
 
 ## 4.3 Code: Calling system calls
 
-第二章最后提到了 `initcode.S` 会调用 `exec` 这个系统调用（[user/initcode.S:11](https://github.com/mit-pdos/xv6-riscv/blob/riscv//user/initcode.S#L11)）。 现在我们来看看，这个来自 user space 的调用，是怎么一路传递到 kernel 中对应的 `exec` 实现的
+User programs call library functions in order to make system calls. For example, the shell displays a prompt with this function call (in user/sh.c): write(2, "$ ", 2); Here’s the library function, in user/usys. S:
 
-`initcode.S` 会把传给 `exec` 的引数放进 `a0` 和 `a1` 寄存器中，并将系统调用的编号放进 `a7`。 系统调用编号会对应到 `syscalls` 数组中的条目，这个数组是一张函数指针的列表（[kernel/syscall.c:107](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/syscall.c#L107)）。 接著 `ecall` 指令会触发 trap 进入 kernel，如前所述，这会依序执行 `uservec`、`usertrap` 与 `syscall`
+用户程序通过调用库函数来发起系统调用。例如，shell 使用以下函数调用（位于 `user/sh.c` 中）来显示提示符：以下是位于 user/usys.S 中的库函数：
 
-`syscall`（[kernel/syscall.c:132）](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/syscall.c#L132)会从 `trapframe` 中存储的 `a7` 读出系统调用编号，并利用它去查找 `syscalls` 数组。 第一次的系统调用中，`a7` 里会放 `SYS_exec`（[kernel/syscall.h:8](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/syscall.h#L8)），因此会调用到对应的实现函数 `sys_exec`
+```c
+write:
+    li a7, SYS_write
+    ecall
+    ret
+```
 
-当 `sys_exec` 执行完毕并返回时，`syscall` 会把它的返回值写进 `p->trapframe->a0`。 这样做的原因是，在 RISC-V 的 C 调用惯例中，返回值会放在 `a0`，因此这样可以让原本 user space 中的 `exec()` 调用收到正确的返回值。 惯例上，系统调用若发生错误会返回负数，成功则是 0 或正数。 若系统调用编号不合法，`syscall` 会印出错误消息，并返回 -1
+The code that the C compiler generates for the function call loads the three arguments into registers a0, a1, and a2. Then the write() function loads the system call number, SYS_write (16), into a 7. The kernel will look at those registers to find out what system call is intended, and what the arguments are. The ecall instruction traps from user space into the kernel and causes uservec, usertrap, and then syscall to execute.
+
+C 编译器为该函数调用生成的代码会将三个参数加载到寄存器 a0、a1 和 a2 中。随后，write() 函数将系统调用号 SYS_write (16) 加载到 a7 中。内核将通过检查这些寄存器来确定预期的系统调用及其参数。ecall 指令会从用户空间陷入（trap）内核，并触发 uservec、usertrap，接着执行 syscall。
+
+At this point, please read kernel/syscall.c,sys_write() in kernel/sysfile.c, and copyout(), copyin(), and copyinstr() in kernel/vm.c. syscall (3731) retrieves the system call number from the saved a 7 in the trapframe and uses it to index into syscalls (3706). For our example, a 7 contains SYS_write (3566), resulting in a call to the system call implementation function sys_write.
+
+此时，请阅读 kernel/syscall.c、kernel/sysfile.c 中的 sys_write()，以及 kernel/vm.c 中的 copyout()、copyin() 和 copyinstr()。syscall (3731) 从 trapframe 中保存的 a7 寄存器里获取系统调用号，并以此作为索引访问 syscalls (3706)。在我们的示例中，a7 包含 SYS_write (3566)，从而导致调用系统调用的实现函数 sys_write。
+
+When sys_write returns, syscall records its return value in p->trapframe->a0. This will cause the original user-space call to write () to return that value, since the C calling convention on RISC-V places return values in a 0 . System calls conventionally return negative numbers to indicate errors, and zero or positive numbers for success.
+
+当 sys_write 返回时，syscall 会将其返回值记录在 p->trapframe->a0 中。这将导致用户空间原始的 write() 调用返回该值，因为 RISC-V 上的 C 语言调用约定将返回值放在 a0 中。按照惯例，系统调用返回负数表示错误，返回零或正数表示成功。
 
 ## 4.4 Code: System call arguments
 
-kernel 中的系统调用实现需要获取 user code 所传入的引数，由于 user code 会通过包装函数来使用系统调用，这些引数一开始会依据 RISC-V 的 C 调用惯例放在寄存器中。 kernel 的 trap 处理流程会将用户寄存器的内容存储到目前 process 的 trapframe 中，让 kernel code 之后可以从那里找到它。 kernel 提供了 `argint`、`argaddr` 和 `argfd` 等函数，分别可用来从 trapframe 中读取第 `n` 个系统调用的引数，并将其作为整数、指针或文件描述符使用。 这些函数内部都会调用 `argraw`，以获取对应的用户寄存器（[kernel/syscall.c:34](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/syscall.c#L34)）
+System call arguments start out in the user registers, and are then moved to the trap frame by the kernel trap code. The kernel functions argint, argaddr, and argfd retrieve the 'th system call argument from the trap frame as an integer, pointer, or a file descriptor.
 
-有些系统调用会将指针作为引数传入，而 kernel 必须使用这些指针去读写 user memory。 举例来说，`exec`系统调用会传给 kernel 一个数组，里面是指向 user space 中字串引数的指针。 这些指针会带来两个挑战：第一是 user program 中可能有 bug 或是恶意代码，也可能会传入一个无效的指针，甚至尝试诱导 kernel 访问 kernel memory 而不是 user memory； 第二是 xv6 的 kernel page table 映射方式与 user page table 不同，因此 kernel 不能直接用一般的指令去从 user 的地址读写数据
+系统调用参数最初存放在用户寄存器中，随后由内核陷阱代码移动到陷阱帧（trap frame）中。内核函数 argint、argaddr 和 argfd 分别从陷阱帧中以整数、指针或文件描述符的形式检索第 个系统调用参数。
 
-kernel 提供了几个函数，以安全地从 user 给的内存地址读写数据。 例如 `fetchstr`（[kernel/syscall.c:25](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/syscall.c#L25)），像 `exec` 这样与文件相关的系统调用会用 `fetchstr` 从 user space 读取字串形式的档名引数。 `fetchstr` 本身会调用 `copyinstr` 来完成底层的复制工作
+Some system calls pass pointers as arguments, and the kernel must use those pointers to read or write user memory. The write system call, for example, passes the kernel a user-space pointer to the data to be written. Such pointers pose two challenges. First, the user program may be buggy or malicious, and may pass the kernel an invalid pointer or a pointer intended to trick the kernel into accessing kernel memory instead of user memory. Second, the xv6 kernel page table mappings are not the same as the user page table mappings, so the kernel cannot use ordinary instructions to load or store from user-supplied addresses.
 
-`copyinstr`（[kernel/vm.c:415)](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/vm.c#L415)）会从 user page table `pagetable` 中的虚拟地址 `srcva` 复制最多 `max` 位元组的数据到 `dst`。 由于 `pagetable` 并不是目前使用中的 page table，`copyinstr` 会使用 `walkaddr`（它会调用 `walk`）去查询 `srcva` 在 `pagetable` 中对应的实体地址 `pa0`
+某些系统调用将指针作为参数传递，内核必须使用这些指针来读取或写入用户内存。例如，write 系统调用向内核传递一个指向待写入数据的用户空间指针。此类指针带来了两个挑战。首先，用户程序可能存在漏洞或具有恶意，可能会向内核传递一个无效指针，或者传递一个旨在诱导内核访问内核内存而非用户内存的指针。其次，xv6 内核页表映射与用户页表映射不同，因此内核无法使用普通指令从用户提供的地址进行加载或存储。
 
-由于 xv6 的 kernel page table 采用直接映射，这让 `copyinstr` 可以直接从 `pa0` 复制字串到 `dst`。 `walkaddr`（[kernel/vm.c:109](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/vm.c#L109)）也会检查用户给的虚拟地址是否真的属于该 process 的 user 地址空间，这样 kernel 就不会被诱骗去读其他内存。 另一个类似的函数是 `copyout`，它会把数据从 kernel 复制到 user 提供的地址
+The kernel implements functions that safely transfer data to and from user-supplied addresses. fetchstr is an example (3624). File system calls such as exec use fetchstr to retrieve string file-name arguments from user space. fetchstr calls copyinstr to do the hard work. copyinstr (1833) copies up to max bytes to dst from virtual address srcva in the user page table pagetable. Since pagetable is not the current page table, copyinstr uses walkaddr (which calls walk) to look up srcva in pagetable, yielding physical address pa0. The kernel’s page table maps all of physical RAM at virtual addresses that are equal to the RAM’s physical address. This allows copyinstr to directly copy string bytes from pa0 to dst. walkaddr (1520) checks that the user-supplied virtual address is part of the process’s user address space, so programs cannot trick the kernel into reading other memory. A similar function, copyout, copies data from the kernel to a user-supplied address.
+
+内核实现了安全地在用户提供地址之间传输数据的函数。fetchstr 就是一个例子 (3624)。诸如 exec 之类的文件系统调用使用 fetchstr 从用户空间检索字符串文件名参数。fetchstr 调用 copyinstr 来完成核心工作。copyinstr (1833) 从用户页表 pagetable 中的虚拟地址 srcva 复制最多 max 字节到 dst。由于 pagetable 不是当前的页表，copyinstr 使用 walkaddr（它会调用 walk）在 pagetable 中查找 srcva，从而得到物理地址 pa0。内核页表将所有物理内存映射到与物理地址相等的虚拟地址上。这使得 copyinstr 能够直接将字符串字节从 pa0 复制到 dst。walkaddr (1520) 会检查用户提供的虚拟地址是否属于进程的用户地址空间，因此程序无法诱骗内核读取其他内存。一个类似的函数 copyout 则负责将数据从内核复制到用户提供的地址。
 
 ## 4.5 Traps from kernel space
 
-xv6 处理来自 kernel code 的 trap 的方式与处理 user code 的 trap 不同。 当进入 kernel 时，`usertrap` 会将 `stvec` 设置为指向 `kernelvec` 的组语代码（[kernel/kernelvec.S:12](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/kernelvec.S#L12)）。 由于 `kernelvec` 只有在 xv6 身处 kernel 状态时才会被执行，所以 `kernelvec` 可以假设 `satp` 已经指向了 kernel page table，并且 stack pointer 也已经指向了一个合法的 kernel stack。 `kernelvec` 会把 32 个寄存器的值全部存入 stack 内，之后再从中还原，这样就能让被中断的 kernel code 在不受干扰的情况下继续执行
+Please read kernel/kernelvec.S, and kerneltrap() in kernel/trap.c. Xv6 handles traps from kernel code in a different way than traps from user code. When entering the kernel, usertrap points stvec to the assembly code at kernelvec (3211), Since kernelvec only executes if xv6 was already in the kernel, kernelvec can rely on satp being set to the kernel page table, and on the stack pointer referring to a valid kernel stack. kernelvec pushes all 32 registers onto the current stack, from which it will later restore them so that the interrupted kernel code can resume without disturbance. kernelvec saves the registers on the stack of the interrupted kernel thread, which makes sense because the register values belong to that thread. This is particularly important if the trap causes a switch to a different thread - in that case the trap will actually return from the stack of the new thread, leaving the interrupted thread’s saved registers safely on its stack. kernelvec jumps to kerneltrap (3453) after saving registers. kerneltrap is prepared for just one type of trap: device interrupts. It calls devintr (3506) to handle them. If the trap isn’t a device interrupt, it must be an exception, such as kernel code trying to use an invalid pointer. This could only be caused by a bug in the kernel code. The kernel does not have a way to recover in this situation, so it calls panic(), which prints an error message and then halts.
 
-`kernelvec` 会将寄存器内容存储在被中断的 kernel thread 的 stack 上，因为这些寄存器的值本来就属于该 thread。 这一点在 trap 导致切换到其他 thread 时特别重要，那种情况下 trap 结束后会从新 thread 的 stack 返回，而原本被中断的 thread 的寄存器内容就安全地保留在它自己的 stack 上
+请阅读 `kernel/kernelvec.S` 以及 `kernel/trap.c` 中的 `kerneltrap()`。Xv6 处理来自内核代码的陷阱的方式与来自用户代码的陷阱不同。当进入内核时，usertrap 将 stvec 指向 kernelvec (3211) 处的汇编代码。由于只有在 xv6 已经处于内核态时才会执行 kernelvec，因此 kernelvec 可以依赖于 satp 已设置为内核页表，并且栈指针指向一个有效的内核栈。kernelvec 将所有 32 个寄存器推入当前栈中，稍后将从栈中恢复这些寄存器，以便被中断的内核代码可以无干扰地恢复运行。kernelvec 将寄存器保存在被中断的内核线程的栈上，这是合理的，因为寄存器值属于该线程。如果陷阱导致切换到另一个线程，这一点尤为重要——在这种情况下，陷阱实际上会从新线程的栈中返回，而被中断线程保存的寄存器则安全地保留在其自身的栈上。kernelvec 在保存寄存器后跳转到 kerneltrap (3453)。kerneltrap 仅准备处理一种类型的陷阱：设备中断。它调用 devintr (3506) 来处理它们。如果陷阱不是设备中断，那么它一定是异常，例如内核代码尝试使用无效指针。这只能是由内核代码中的错误引起的。内核在这种情况下没有恢复的方法，因此它调用 panic()，打印错误消息然后停机。
 
-在将寄存器存入 stack 之后，`kernelvec` 会跳到 `kerneltrap`（[kernel/trap.c:135）](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L135)。 `kerneltrap` 主要用来处理两种 trap：装置中断与例外状况。 它会调用 `devintr`（[kernel/trap.c:185](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L185)）来侦测并处理装置中断。 如果这个 trap 不是装置中断，那就表示是例外，而在 xv6 的 kernel 中，只要发生例外就一律视为致命错误，此时 kernel 会调用 `panic` 并停止执行
+If kerneltrap was called due to a timer interrupt, and a process’s kernel thread is running (as opposed to a scheduler thread), kerneltrap calls yield to give other threads a chance to run. At some point one of those threads will yield, and let our thread and its kerneltrap resume again. Chapter 8 explains what happens in yield.
 
-如果这次的 `kerneltrap` 是由 `timer` 中断触发的，而且当前执行的是某个 process 的 kernel thread（不是 scheduler thread），那 `kerneltrap` 就会调用 `yield`，让其他线程有机会被调度执行。 之后某个线程会再次调用 `yield`，使我们原本的线程与它的 `kerneltrap` 再度恢复执行。 `yield` 的详细行为会在第七章说明
+如果 `kerneltrap` 是由于定时器中断被调用的，并且当前正在运行的是进程的内核线程（而非调度器线程），`kerneltrap` 会调用 `yield` 以给其他线程运行的机会。在某个时刻，那些线程中的一个会主动让出 CPU，从而让我们的线程及其 `kerneltrap` 再次恢复执行。第 8 章将解释 `yield` 中发生了什么。
 
-当 `kerneltrap` 处理完毕后，它需要返回到原本被 trap 中断的那段代码。 由于 `yield` 可能已经修改了 `sepc` 和 `sstatus` 中的前一个模式，因此 `kerneltrap` 在开始时会先存储这些寄存器，然后将它们还原并回到 `kernelvec`（[kernel/kernelvec.S:38](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/kernelvec.S#L38)）中。 `kernelvec` 会从 stack 中将原先存入的寄存器取出，然后执行 `sret` 指令，这会把 `sepc` 的值写回 `pc`，从而回到被中断的 kernel code
+When kerneltrap’s work is done, it needs to return to whatever code was interrupted by the trap. Because a yield may have disturbed sepc and the previous mode in sstatus, kerneltrap saves them when it starts. It now restores those control registers and returns to kernelvec (3237). kernelvec pops the saved registers from the stack and executes sret, which copies sepc to pc and resumes the interrupted kernel code.
 
-这边你可以想想看，如果 `kerneltrap` 是因为 timer 中断而调用了 `yield`，那 trap 是怎么完成返回的？
+当 `kerneltrap` 的工作完成后，它需要返回到被陷阱（trap）中断的代码处。由于 `yield` 可能会干扰 `sepc` 和 `sstatus` 中的前一个模式，`kerneltrap` 在开始时会保存它们。现在它恢复这些控制寄存器并返回到 `kernelvec` (3237)。`kernelvec` 从栈中弹出保存的寄存器并执行 `sret`，该指令将 `sepc` 复制到 `pc` 并恢复执行被中断的内核代码。
 
-当某个 CPU 从 user space 进入 kernel 时，xv6 会把该 CPU 的 `stvec` 设置为 `kernelvec`； 你可以在 `usertrap` 中看到这段代码（[kernel/trap.c:29](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L29)）。 不过在 kernel 开始执行且 `stvec` 还没改成 `kernelvec` 的这段期间，`stvec` 仍指向 `uservec`，这段期间如果发生了装置中断就会有问题。 所幸 RISC-V 在进入 trap 时会自动关闭中断，而 `usertrap` 也会等到设完 `stvec` 才重新打开中断
+Xv6 sets a CPU’s stvec to kernelvec when that CPU enters the kernel from user space; you can see this in usertrap (3346). But there’s a window of time when the kernel has started executing but stvec is still set to uservec, and it’s crucial that no device interrupt occur during that window. Luckily the RISC-V always disables interrupts when it starts to take a trap, and usertrap doesn’t enable them again until after it sets stvec.
 
-## 4.6 Page-fault exceptions
+当 CPU 从用户空间进入内核时，xv6 会将该 CPU 的 `stvec` 设置为 `kernelvec`；你可以在 `usertrap` (3346) 中看到这一点。但在内核开始执行到 `stvec` 被设置为 `uservec` 之间存在一个时间窗口，在这个窗口期间绝对不能发生设备中断，这一点至关重要。幸运的是，RISC-V 在开始处理陷阱时总是会禁用中断，而 `usertrap` 直到设置完 `stvec` 之后才会再次启用中断。
 
-xv6 对于例外状况的反应相当无趣：如果例外发生在 user space，kernel 就会把出错的 process 给 kill 掉； 如果例外发生在 kernel，kernel 则会直接 panic。 真正的操作系统通常会用更有趣的方式来处理这些状况
+## 4.6 Real world
 
-举个例子，许多 kernel 会利用 page fault 来实现 copy-on-write（COW）型的 `fork`。 为了说明这种 `fork`，让我们回到 xv6 的 `fork`，它在第三章内有被提到。 `fork` 会让 child process 初始的内存内容和 parent process 当下的内存内容相同。 xv6 用 `uvmcopy`（[kernel/vm.c:313](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/vm.c#L313)）来实现这个功能，它会为 child 分配物理内存，并把 parent 的内存内容复制过去。 如果能让 parent 和 child 共享 parent 的物理内存，效率会更高。 不过直接这样做是行不通的，因为他们会互相写入共享的 stack 和 heap，导致彼此的执行出错
+The need for trampoline pages could be eliminated if kernel memory were mapped into every process’s user page table (with PTE_U clear). That would also eliminate the need for a page table switch when trapping from user space into the kernel. That in turn would allow system call implementations in the kernel to take advantage of the current process’s user memory being mapped, allowing kernel code to directly dereference user pointers. Many operating systems have used these ideas to increase efficiency. Xv6 avoids them in order to reduce the chances of security bugs in the kernel due to inadvertent use of user pointers, and to reduce some complexity that would be required to ensure that user and kernel virtual addresses don’t overlap.
 
-只要搭配正确的 page table 权限设置与 page fault 机制，parent 和 child 是可以安全地共享物理内存的。 当某个虚拟地址没有对应的 page table 映射，或该映射的 `PTE_V` 位元没被设起来，或权限位元（`PTE_R`、`PTE_W`、`PTE_X`、`PTE_U`）不允许所尝试的操作时，CPU 就会生成 page-fault exception。 在 RISC-V 架构中，page fault 分为三种类型：load page fault（由 `load` 指令引起）、store page fault（由 `store` 指令引起）和 instruction page fault（由 instruction fetch 造成）。 `scause` 寄存器会指出是哪种 page fault，而 `stval` 则会记录无法被转换的地址
+如果将内核内存映射到每个进程的用户页表中（且不设置 `PTE_U` 标志），就可以消除对跳板页（trampoline pages）的需求。这还可以消除从用户空间陷阱进入内核时切换页表的必要。这反过来又允许内核中的系统调用实现利用当前进程已映射的用户内存，从而允许内核代码直接解引用用户指针。许多操作系统都利用这些想法来提高效率。xv6 避免使用这些方法，是为了减少因无意中使用用户指针而导致内核安全漏洞的可能性，并降低确保用户和内核虚拟地址不重叠所需的复杂性。
 
-COW `fork` 的基本做法是，让 parent 和 child 一开始共享所有的 page frame，但他们各自都会将这些 page 设成唯读的（`PTE_W` 栏位清 0）。 parent 和 child 都可以读取这些共享内存，但如果任一方对某个 page 做了写入操作，RISC-V CPU 就会生成一个 page-fault exception。 kernel 的 trap handler 会处理这个例外：它会分配一张新的 page frame，并把发生 fault 时那个地址对应的 page frame 的内容复制过去。 然后 kernel 会更新发生 fault 的 process 的 page table，把对应的 PTE 改成指向新的 page frame，并允许读写
+## 4.7 Exercises
 
-最后 kernel 会让该 process 从造成 fault 的那条指令重新执行。 而因为这时 PTE 已经允许写入了，所以这次执行就不会再触发 page fault。 copy-on-write 需要维护额外的信息来跟踪哪些 page frame 可以被释放，因为每张 page 可能会被多张 page table 所引用，这些引用会随著 fork、page fault、exec 和 exit 而改变。 这样的记录机制还带来一个重要的最佳化：如果某个 process 发生 store page fault，但该 page frame 只有被它自己的 page table 引用，那其实就不需要做复制
+1. Could some or all of the code in trampoline. and kernelvec. be written in rather than assembler?
+   trampoline.S 和 kernelvec.S 中的部分或全部代码能否用 C 语言编写，而不是汇编语言？
+2. Is there a way to eliminate the special TRAPFRAME page mapping in every user address space? For example, could uservec be modified to simply push the 32 user registers onto the kernel stack, or store them in the proc structure?
+   有没有办法取消每个用户地址空间中特殊的 TRAPFRAME 页面映射？例如，是否可以修改 uservec，使其简单地将 32 个用户寄存器压入内核栈，或者将它们存储在 proc 结构体中？
+3. Could xv 6 be modified to eliminate the special TRAMPOLINE page mapping?
+   能否通过修改 xv6 来取消特殊的 TRAMPOLINE 页面映射？
 
-copy-on-write 可以让 `fork` 更快，因为在 fork 的当下不需要复制内存。 虽然之后在写入时还是可能得做复制，但实际上大多数内存都不需要真的被复制。 常见的一个例子是 `fork` 后马上做 `exec`：在 `fork` 之后可能只有少数的 page 被写入，而 child 的 `exec` 又会释放掉大部分从 parent 继承来的内存。 copy-on-write `fork` 可以避免复制这些内存。 此外，COW `fork` 是透明的，其不需要对应用程序做任何修改，它们就能自动受益
-
-page table 和 page fault 的组合，除了能实现 COW `fork` 以外，还能支持很多有趣的功能。 其中一个被广泛使用的机制是 lazy allocation，它包含两个步骤。 第一步，当应用程序调用 `sbrk` 向系统要求更多内存时，kernel 会纪录其要增加的大小，但不会马上分配物理内存，也不会为这段新的虚拟地址区间创建 PTE。 第二步，当某个新地址上发生 page fault 时，kernel 才会真正分配一张 page frame，并把它映射进 page table。 就像 COW `fork` 一样，lazy allocation 对应用程序来说也是透明的
-
-由于应用程序请求的内存通常会比实际需要的还多，因此 lazy allocation 在这种情况下就非常有效：对于那些应用程序从未实际使用的 page，kernel 完全不需要做任何处理。 此外，如果应用程序一次请求大量的地址空间，而没有 lazy allocation 的话，`sbrk` 的成本会非常高：例如应用程序要求 1GB 的内存时，kernel 必须分配并清零 262,144 个 4096-byte 的 page。 而 lazy allocation 能使这笔成本随时间摊平
-
-然而，lazy allocation 也会带来额外的 page fault 开销，因为每次 page fault 都会牵涉一次 user/kernel 的切换。 为了降低这项成本，操作系统可以在每次 page fault 时一次分配多个连续的 page，而不是只分配一个，并且还可以为这种 page fault 特化 kernel 的进出路径
-
-另一个广泛使用且仰赖 page fault 的功能是 demand paging。 在 xv6 中，当执行 `exec` 时，它会在启动应用程序前就把应用程序的 text 和 data 段全部加载内存。 由于应用程序可能很大，而从硬盘读数据又很耗时，这个启动成本对用户而言可能会很明显
-
-为了缩短启动时间，现代的 kernel 一开始并不会把可执行档加载内存，而是创建一份 user page table，并将其中所有 PTE 标成 invalid。 kernel 启动程序后，每当程序第一次使用某个 page，就会发生 page fault，然后 kernel 根据这个 fault 去从硬盘读入该 page 的内容，并将它映射到 user 的地址空间。 就像 COW fork 和 lazy allocation 一样，这个机制对应用程序来说是透明的
-
-电脑上执行的程序还可能会需要超过物理内存容量的内存。 为了优雅地处理这种情况，操作系统可能会实现 swapping 的机制。 它的基本想法是：只在内存中保留部分用户的 page，剩下的则存储在硬盘中的 swap space。 kernel 会把那些对应到硬盘中的 swap space 的内存，其对应的 PTE 标为 invalid
-
-接著如果应用程序试图使用某个已经被 swap out 到硬盘的 page，便会触发 page fault，此时该 page 必须被 swap in：kernel 的 trap handler 会分配一张物理内存，将对应的数据从硬盘读回 RAM，然后更新对应的 PTE，让它指向这张新的 page frame
-
-如果某个 page 需要被 swap in，但当下已经没有任何可用的物理内存了，这种情况下 kernel 必须先释放出一张 page frame，方法是将其中的一个 page 做 swap out，也就是把它「搬移」到硬盘上的 swap space，并将所有引用该 page 的 PTE 标记为 invalid
-
-不过「搬移」的成本很高，因此在它不常发生的情况下 paging 的表现较好，这代表应用程序只会使用其分配内存中的一小部分，而且这些常用 page 的总能被放在内存里。 这种特性通常被称为良好的 locality of reference。 就像其他许多虚拟内存技术一样，kernel 通常会让 swapping 对应用程序来说是透明的
-
-::: tip  
-这边将原文的用词改成了更常见的用词：
-
-- swapping：原文为 paging to disk
-- swap out：原文为 paged out
-- swap in：原文为 paged in
-
-主要是因为对于「page」相关的词我已经选择保留原文了，这几个再加进来会有些杂乱，导致不好阅读  
-:::
-
-即使硬件提供了大量的内存，电脑在实际运行时仍经常处于几乎没有「空闲（free）」物理内存的状态。 例如，云端服务提供者通常会在单一机器上同时运行许多客户的应用程序，以达到硬件资源的最大利用率。 再例如，用户会在只有少量物理内存的智慧型手机上同时执行多个应用程序。 在这些情况下，每次分配一张新 page 前都可能需要先将某张现有的 page swap out。 因此，当物理内存资源紧张时，分配内存的成本会较高
-
-在可用内存紧张、而程序实际上只使用其分配内存的一部分时，lazy allocation 和 demand paging 特别具有优势。 这些技术还能避免某些情况下的资源浪费，例如：某个 page 被分配或从硬盘加载，但却从未被实际使用，或甚至在使用前就被 swap out 了
-
-还有一些其他功能同样结合了 paging 和 page fault exception，例如自动延展的 stack 以及 memory-mapped file。 memory-mapped file 是指程序通过 `mmap` 系统调用把文件映射进自己的地址空间，这样程序就可以直接用 `load` 和 `store` 指令来读写这些文件了
-
-## 4.7 Real world
-
-trampoline 与 trapframe 的设计看起来可能过于复杂。 背后的主要原因是 RISC-V 在触发 trap 时会刻意地不做太多事，这样可以让 trap handler 的执行速度更快，而这点在实现上是非常重要的。 结果就是 kernel 的 trap handler 的前几条指令必须在 user environment 下执行：使用的是 user page table，还有 user 的寄存器内容。 而且 trap handler 起初也不知道像「目前执行的 process 是谁」或「kernel page table 的地址」这些有用的信息
-
-这些问题之所以有解，是因为 RISC-V 提供了一些受保护的区域让 kernel 可以在进入 user space 前先存储信息，例如 `sscratch` 寄存器，还有一些指向 kernel memory 的 user page table entry，但这些 entry 并没有设 `PTE_U` 权限来保护。 xv6 的 trampoline 与 trapframe 就是善用了这些 RISC-V 的特性
-
-如果 kernel memory 会被映射到每个 process 的 user page table 中（但不设 `PTE_U` 权限），那就不需要额外的 trampoline page 了。 这样一来，从 user space trap 进 kernel 时也就不需要切换 page table。 这又让 kernel 在实现系统调用时可以直接访问 user memory，因为这些内存已经被映射到了目前的 page table 中。 许多操作系统都会这样设计来提升效率。 不过 xv6 为了避免 kernel 不小心使用 user pointer 而生成安全漏洞，也为了简化 user 与 kernel 的地址空间不重栈所需要的处理，因此选择不使用这种设计
-
-真正的操作系统会实现像是 copy-on-write `fork`、lazy allocation、demand paging、paging to disk、memory-mapped file 等等机制。 此外，这些系统也会尽量让整个物理内存都有用处，通常会拿来缓存那些不属于任何 process 的文件内容
-
-真正的操作系统也会提供一些系统调用让应用程序来管理自己的地址空间，或是让它自己处理 page fault，例如 `mmap`、`munmap`、`sigaction` 这些调用，也会提供像 `mlock` 这样的调用来让应用程序使用的 page 固定在内存里而不被 swap out，或是像 `madvise` 这样的调用让应用程序告诉 kernel 它打算怎么使用这块内存
-
-## 4.8 Exercises
-
-1. `copyin` 和 `copyinstr` 会通过软件的方式走访 user page table。 设置 kernel 的 page table，让 kernel 能直接映射 user program，这样 `copyin` 和 `copyinstr` 就可以改用 `memcpy` 把系统调用的引数复制到 kernel space，而不用自己做 page table walk 了
-2. 实现 lazy memory allocation
-3. 实现 COW fork
-4. 有没有方法可以去掉每个 user address space 中的 `TRAPFRAME` page 映射？ 例如，`uservec` 是否可以改成直接把 32 个 user 寄存器 push 到 kernel stack，或是存在 `proc` 结构中？
-5. 能不能改写 xv6，让它不需要 `TRAMPOLINE` page 的映射？
-6. 实现 `mmap`
-
-## Bibliography
-
-- <a id="1">[1]</a>：The RISC-V instruction set manual Volume II: privileged specification. https://drive.google.com/file/d/1uviu1nH-tScFfgrovvFCrj7Omv8tFtkp/view?usp=drive_link, 2024

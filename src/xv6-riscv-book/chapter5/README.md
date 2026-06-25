@@ -1,6 +1,6 @@
 ---
-title: xv6 riscv book chapter 5：Interrupts and device drivers
-date: 2025-08-01
+title: xv6 riscv book chapter 5：Page faults
+date: 2025-07-27
 tag: 
 - OS
 - risc-v
@@ -8,154 +8,113 @@ category:
 - OS
 - risc-v
 ---
-# xv6 riscv book chapter 5：Interrupts and device drivers
 
-driver 是操作系统中负责管理特定装置的代码：它会设置装置的硬件、命令装置执行操作、处理装置生成的中断，并与那些可能正在等待该装置 I/O 的 process 交互。 driver 的代码常常很棘手，因为它与其所管理的装置是并行执行的。 此外，driver 还必须理解装置的硬件接口，而这些接口可能很复杂，也可能没有良好文件说明
+# xv6 riscv book chapter 5：Page faults
 
-需要操作系统处理的装置通常可以将其设置成会生成 interrupt，kernel 的 trap handler 代码会辨认出装置发出的 interrupt，并调用对应 driver 的 interrupt handler； 在 xv6 里由 `devintr`（[kernel/trap.c:185](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L185)） 来去调用对应的 driver
+The RISC-V CPU raises a page-fault exception when a virtual address is used that has no mapping in the page table, or has a mapping whose PTE_V flag is clear, or a mapping whose permission bits (PTE_R, PTE_W, PTE_X, PTE_U) forbid the operation being attempted. RISC-V distinguishes three kinds of page fault: load page faults (caused by load instructions), store page faults (caused by store instructions), and instruction page faults (caused by fetches of instructions to be executed). The scause register indicates the type of the page fault and the stval register contains the address that couldn’t be translated.
 
-许多 device driver 的程序会在两种情境下执行：一种是称为 top half 的部分，会在 process 的 kernel thread 里执行； 另一种是称为 bottom half 的部分，会在 interrupt 发生时执行。 top half 会被像是 read 和 write 这类要让装置进行 I/O 的 system call 调用。 top half 的程序可能会要求硬件开始某个操作（例如请硬盘读一个区块），然后等待操作完成，接著会生成一个 interrupt。 driver 的 interrupt handler，也就是 bottom half，会判断是哪个操作完成了，并在必要时唤醒等待的 process，然后告诉硬件可以开始执行下一个等待中的操作了
+当使用的虚拟地址在页表中没有映射、或其映射的 PTE_V 标志位为清除状态、亦或其权限位（PTE_R、PTE_W、PTE_X、PTE_U）禁止当前尝试的操作时，RISC-V CPU 会触发缺页异常（page-fault exception）。RISC-V 将缺页异常分为三类：读缺页（由 load 指令引起）、写缺页（由 store 指令引起）以及指令缺页（由取指执行引起）。scause 寄存器指示了缺页异常的类型，而 stval 寄存器则包含了无法被转换的地址。
 
-## 5.1 Code: Console input
+The combination of page tables and page faults is a powerful tool. Page tables give the kernel a level of indirection between virtual and physical addresses, so that the kernel can control the structure and content of address spaces. Page faults allow the kernel to intercept loads and stores and, by modifying the page table, specify on the fly what data those references refer to. The kernel can use these capabilities to increase efficiency: for example, copy-on-write fork allows the kernel to transparently share memory between parent and child, avoiding the cost of copying pages that neither write. Application programmers can also benefit. One possibility is memory-mapped files, where the kernel uses paging to cause a file’s content to appear in an application’s address space, transparently reading file blocks in response to page faults. Another is lazy memory allocation, which allows a program to ask for a huge virtual address space, but only to pay the cost of allocating physical memory for the pages the program actually reads and writes. xv6 uses page faults for only one purpose: lazy allocation.
 
-console driver（[kernel/console.c](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/console.c)）是一个简单展示 driver 结构的范例，其通过接在 RISC-V 上的 UART 序列埠硬件来接收人类输入的字元。 console driver 会一次累积一整行输入，并处理像 backspace 和 control-u 这类的特殊字元。 像 shell 这样的 user process，会通过 `read` 系统调用从 console 读取一整行的输入。 当你在 QEMU 中对 xv6 输入时，你的按键会经由 QEMU 模拟的 UART 硬件发送给 xv6
+页表与缺页异常的结合是一个强大的工具。页表为内核提供了虚拟地址与物理地址之间的间接层，使得内核可以控制地址空间的结构和内容。缺页异常允许内核拦截读写操作，并通过修改页表，动态地指定这些引用所指向的数据。内核可以利用这些能力来提高效率：例如，写时复制（copy-on-write）fork 允许内核在父子进程间透明地共享内存，从而避免复制那些双方都不会修改的页面的开销。应用程序员也能从中受益。一种可能性是内存映射文件（memory-mapped files），内核利用分页机制使文件内容出现在应用程序的地址空间中，通过响应缺页异常来透明地读取文件块。另一种是延迟内存分配（lazy memory allocation），它允许程序请求巨大的虚拟地址空间，但仅在程序实际读写页面时才支付分配物理内存的代价。xv6 仅将缺页异常用于一个目的：延迟分配。
 
-这个 driver 所操作的 UART 硬件，是由 QEMU 模拟出来的 16550 晶片<sup>[[1]](#1)</sup>。 在真实的电脑上，16550 晶片通常用来控制 RS232 序列连线，连接到终端机或另一台电脑。 而在执行 QEMU 时，它则连接到你的键盘与显示器
+Before proceeding, please read the functions sys_sbrk() in kernel/sysproc.c, and vmfault in kernel/vm.c.Search for calls to vmfault in kernel/trap.c and kernel/vm.c.
 
-以软件的角度来看，UART 硬件是由 memory-mapped 的控制寄存器组成的。 也就是说，RISC-V 硬件会将某些实体地址对应到 UART 装置，使得对那些地址的 load 与 store 操作实际上是与硬件交互，而不会访问 RAM。 UART 的 memory-mapped 地址从 `0x10000000` 开始，也就是 `UART0`（[kernel/memlayout.h:21](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/memlayout.h#L21)）
+在继续之前，请阅读 kernel/sysproc.c 中的 sys_sbrk() 函数，以及 kernel/vm.c 中的 vmfault 函数。在 kernel/trap.c 和 kernel/vm.c 中查找对 vmfault 的调用。
 
-UART 有一些控制寄存器，每个寄存器的宽度都是一个 byte，它们相对于 `UART0` 的位移定义在（[kernel/uart.c:22](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/uart.c#L22)）里面。 例如 `LSR` 寄存器里的某些 bit 表示是否有输入字元等著被软件读取，这些字元（如果有的话）可以从 RHR 寄存器读出。 每次读取后，UART 硬件会从它内部的 FIFO 中删除该字元，当 FIFO 清空后，其会一并清除 `LSR` 中的 ready bit。 UART 的发送逻辑与接收逻辑几乎是独立的，如果软件写入一个 byte 到 `THR`，UART 就会发送该 byte
+## 5.1 Lazy allocation
 
-xv6 的 `main` 会调用 `consoleinit`（[kernel/console.c:182](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/console.c#L182)）来初始化 UART 硬件。 这段程序会设置 UART，让它在接收到每个输入 byte 时生成接收中断（receive interrupt），以及在每个输出 byte 发送完成时生成发送完成中断（transmit complete interrupt）（[kernel/uart.c:53](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/uart.c#L53)）
+xv6’s lazy allocation has two parts. First, when an application asks for memory by calling sbrk with the flag SBRK_LAZY, the kernel notes the increase in size, but does not allocate physical memory and does not create PTEs for the new range of virtual addresses. Second, on a page fault on one of those new addresses, the kernel allocates a page of physical memory and maps it into the page table. The kernel implements lazy allocation transparently to applications: no modifications to applications are necessary for them to benefit. Lazy allocation is convenient for applications because they don’t have to accurately predict how much memory they will need. For example, an application may process input, but not know in advance how large the input will be. With lazy allocations an application can ask for memory for the worst case, but not have to pay for this worst case: the kernel doesn’t have to do any work at all for pages that the application never uses.
 
-xv6 的 shell 会通过一个由 init.c 所打开的 file descriptor（[user/init.c:19](https://github.com/mit-pdos/xv6-riscv/blob/riscv//user/init.c#L19)）来从 console 读取数据。 对 `read` system call 的调用会一路进入 kernel，最后到达 `consoleread`（[kernel/console.c:80](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/console.c#L80)）。 `consoleread` 会等待输入通过中断抵达，并将输入暂存到 `cons.buf` 中，然后将输入复制到 user space，并在整行输入完成后才返回给 user process。 若用户尚未输入完整的一行，任何调用 `read` 的 process 都会停在 `sleep`（[kernel/console.c:96](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/console.c#L96)）调用中，第七章节会再详细说明 `sleep` 的运行
+xv6 的延迟分配由两部分组成。首先，当应用程序通过调用带有 `SBRK_LAZY` 标志的 `sbrk` 来请求内存时，内核仅记录大小的增加，但不分配物理内存，也不为新的虚拟地址范围创建页表项（PTE）。其次，当在这些新地址上发生缺页异常时，内核才分配一页物理内存并将其映射到页表中。内核实现的延迟分配对应用程序是透明的：无需进行任何修改。向应用程序提供这些功能是使其受益的必要条件。延迟分配对应用程序来说非常方便，因为它们不必准确预测自己需要多少内存。例如，一个应用程序可能会处理输入，但预先并不知道输入会有多大。通过延迟分配，应用程序可以按最坏情况申请内存，但不必为此付出代价：对于应用程序从未使用的页面，内核完全不需要做任何工作。
 
-::: tip  
-`read` 系统调用的实现为 `sys_read`，内部最后会调用 `fileread`，而 `fileread` 会根据 `file` 这个结构体内的成员 `major` 来判断要怎么读取这个 file descriptor：
+Furthermore, if the application is asking to grow the address space by a lot, then sbrk without lazy allocation is expensive: if an application asks for a gigabyte of memory, the kernel has to allocate and zero 262,144 4096-byte physical pages. Lazy allocation allows this cost to be spread over time. On the other hand, lazy allocation incurs the extra overhead of page faults, which involve a user/kernel transition. Operating systems can reduce this cost by allocating a batch of consecutive pages per page fault instead of one page and by specializing the kernel entry/exit code for such page-faults (though xv6 does neither).
 
-```c
-// Read from file f.
-// addr is a user virtual address.
-int
-fileread(struct file *f, uint64 addr, int n)
-{
-  ...
-  } else if(f->type == FD_DEVICE){
-    if(f->major < 0 || f->major >= NDEV || !devsw[f->major].read)
-      return -1;
-    r = devsw[f->major].read(1, addr, n);
-  ...
-  return r;
-}
-```
+此外，如果应用程序请求大幅增加地址空间，那么没有延迟分配的 sbrk 将非常昂贵：如果应用程序请求 1GB 内存，内核必须分配并清零 262,144 个 4096 字节的物理页。延迟分配允许将这一成本分摊到一段时间内。另一方面，延迟分配会产生缺页中断的额外开销，这涉及用户态与内核态的转换。操作系统可以通过在每次缺页中断时分配一批连续页面（而非单个页面），以及为这类缺页中断专门优化内核进入/退出代码来降低这一成本（尽管 xv6 这两点都没有做）。
 
-而在 `consoleinit` 中会将它接到 `consoleread`：
+On the other hand, when taking a page fault for a lazily-allocated page, the kernel may find that it has not free memory to allocate. In this case, the kernel has no easy way of returning an out-of-memory error to the application and instead kills the application. For applications that prefer an error on a failed allocation, xv6 allows an application to allocate memory eagerly by calling sbrk with the flag sbrk_EAGER.
 
-```c
-void
-consoleinit(void)
-{
-  initlock(&cons.lock, "cons");
+另一方面，当为延迟分配的页面处理缺页中断时，内核可能会发现已经没有可分配的空闲内存了。在这种情况下，内核没有简便的方法向应用程序返回内存不足（out-of-memory）错误，而是直接杀死该进程。对于那些希望在分配失败时收到错误的应用程序，xv6 允许应用程序通过调用带有 sbrk_EAGER 标志的 sbrk 来进行立即分配。
 
-  uartinit();
+## 5.2 Code
 
-  // connect read and write system calls
-  // to consoleread and consolewrite.
-  devsw[CONSOLE].read = consoleread;
-  devsw[CONSOLE].write = consolewrite;
-}
-```
+The system call sbrk ( n ) grows (or shrinks if n is negative) a process’s memory size by n bytes, and returns the start of the newly allocated region (i.e., the old size). The kernel implementation is sys_sbrk (3801).
 
-而前面有说 init.c 会开一个 file descriptor 来从 console 读取数据，其底层就是对应到 `CONSOLE`。 因此可知读取 console 的流程为：`read` → `fileread` → `consoleread`  
-:::
+系统调用 sbrk(n) 将进程的内存大小增加 n 字节（如果 n 为负数则减小），并返回新分配区域的起始地址（即旧的大小）。其内核实现是 sys_sbrk (3801)。
 
-当用户输入一个字元时，UART 硬件会要求 RISC-V CPU 生成一个中断，这会启动 xv6 的 trap handler。 trap handler 接著会调用 `devintr`（[kernel/trap.c:185](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L185)），它会查看 RISC-V 的 `scause` 寄存器，以判断该中断是否来自外部装置。 接著，它会向名为 PLIC 的硬件单元查询是由哪个装置生成的中断（[kernel/trap.c:193](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L193)）； 对于 UART 生成的中断，`devintr` 会调用 `uartintr`
+If the application specifies SBRK_EAGER, the system call is implemented by the function growproc (2353), growproc calls uvmalloc. uvmalloc (1628) allocates physical memory with kalloc, zeros the allocated memory, and adds PTEs to the user page table with mappages.
 
-`uartintr`（[kernel/uart.c:177](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/uart.c#L177)）会从 UART 硬件中读取所有尚未处理的输入字元，并将这些字元交给 `consoleintr`（[kernel/console.c:136](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/uart.c#L177)）； 它本身不会等待更多输入，因为未来有新输入时还会再次触发新的中断。 `consoleintr` 的工作是将这些输入字元累积到 `cons.buf` 中，直到整行输入完成为止。 `consoleintr` 会特别处理 backspace 与其他一些特殊字元
+如果应用程序指定了 SBRK_EAGER，该系统调用将由 growproc (2353) 函数实现。growproc 调用 uvmalloc。uvmalloc (1628) 通过 kalloc 分配物理内存，将分配的内存清零，并使用 mappages 向用户页表添加页表项（PTE）。
 
-当输入遇到 newline 时，`consoleintr` 会唤醒等待中的 `consoleread`（如果有的话）。 一旦被唤醒，`consoleread` 就会发现 `cons.buf` 中已经有一整行输入，接著它会把这行数据复制到 user space，然后通过系统调用的机制将控制权返回给 user space
+If the applications allocates memory lazily, sys_sbrk just increments the process’s size (myproc ( ) ->sz) by n and returns the old size; it does not allocate physical memory or add PTEs to the process’s page table.
 
-## 5.2 Code: Console output
+如果应用程序采用延迟分配（lazily）内存，sys_sbrk 仅将进程的大小（myproc ( ) ->sz）增加 n 并返回旧的大小；它不会分配物理内存，也不会向进程页表添加 PTE。
 
-对已连接到 console 的 file descriptor 所做的 `write` 系统调用，最终会到达 `uartputc`（[kernel/uart.c:87](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/uart.c#L87)）。 driver 维护了一个输出缓冲区（`uart_tx_buf`），使得执行写入的 process 不需要等待 UART 发送完毕； 相反地，`uartputc` 会将每个字元加入缓冲区，然后调用 `uartstart` 来启动 UART 的发送（如果尚未开始的话），接著就直接返回。 只有当缓冲区满了的情况下 `uartputc` 才会停下来等待
+When a process loads or stores to a virtual address that lacks a valid page-table mapping, the CPU will raise page-fault exception. usertrap checks for this case (3372) and calls vmfault (1879) to handle the page fault. vmfault checks that the faulting address is within the region previously granted by sbrk, allocates a page of physical memory with kalloc, zeros the allocated page, and adds a PTE to the user page table with mappages. Xv6 sets the PTE_W, PTE_R, PTE_U, and PTE_V flags in the PTE for the new page. Then, usertrap resumes the process at the instruction that caused the fault. Because the PTE is now valid, the re-executed load or store instruction will execute without a fault.
 
-每当 UART 发送完一个 byte，它就会生成一个中断。 `uartintr` 会调用 `uartstart`，这个函数会检查 UART 是否真的完成发送，然后把下一个缓冲区中的输出字元交给 UART 发送。 因此，如果某个 process 一次写入多个 byte 到 console，通常第一个 byte 是由 `uartputc` 调用 `uartstart` 发送出去的，其余在缓冲区里的 byte 则会由 `uartintr` 在每次中断到来时持续调用 `uartstart` 发送出去
+当进程对缺乏有效页表映射的虚拟地址进行加载（load）或存储（store）操作时，CPU 将触发缺页异常（page-fault exception）。usertrap 会检查这种情况 (3372) 并调用 vmfault (1879) 来处理该缺页异常。vmfault 会检查触发异常的地址是否在之前由 sbrk 授权的区域内，使用 kalloc 分配一页物理内存，将分配的页面清零，并使用 mappages 向用户页表添加一个 PTE。Xv6 为新页面的 PTE 设置 PTE_W、PTE_R、PTE_U 和 PTE_V 标志。然后，usertrap 在引起异常的指令处恢复进程执行。由于现在 PTE 已有效，重新执行的加载或存储指令将正常运行而不再触发异常。
 
-通常我们会利用「缓冲区」与「中断」来让「装置活动」与「process 活动」解耦。 即使没有 process 正等著要读数据，console driver 也能先处理输入，因此之后的 `read` 调用仍然能读到这些数据。 同样地，process 也能够直接输出数据，而不用等待装置完成发送。 这种解耦能提升效能，因为它允许 process 在进行装置 I/O 的同时继续执行，而当装置速度很慢（像 UART）或需要即时反应（像 echo 指定字元）时，这点特别重要。 这种设计理念有时被称为 I/O 并行（I/O concurrency）
+If an application frees memory using sbrk, sys_sbrk calls shrinkproc, which calls uvmdealloc. The real work is done by uvmunmap (1604), which uses walk to find PTEs. Since some pages may never have been used by the process and thus never have been allocated by vmfault, uvmunmap skips PTEs without the PTE_V flag. If a PTE mapping is valid, uvmunmap calls kfree to free the physical memory it refers to. Note that Xv6 uses a process’s page table not just to tell the hardware how to map user virtual addresses, but also as the only record of which physical memory pages are allocated to that process. That is the reason why freeing user memory (in uvmunmap) requires examination of the user page table.
 
-::: tip  
-当我们在 shell 中敲下 `a` 键，其流程大概如下：
+如果应用程序使用 sbrk 释放内存，sys_sbrk 会调用 shrinkproc，进而调用 uvmdealloc。实际的工作由 uvmunmap (1604) 完成，它使用 walk 来查找 PTE。由于某些页面可能从未被进程使用过，因此从未由 vmfault 分配，所以 uvmunmap 会跳过没有 PTE_V 标志的 PTE。如果 PTE 映射有效，uvmunmap 会调用 kfree 来释放其指向的物理内存。请注意，Xv6 使用进程页表不仅是为了告诉硬件如何映射用户虚拟地址，而且将其作为分配给该进程的物理内存页的唯一记录。这就是为什么释放用户内存（在 uvmunmap 中）需要检查用户页表的原因。
 
-1. shell 内的 `getcmd` 印出 `$` 提示后会调用 `gets`
-    - 其底层会调用 `consoleread`，由于 FIFO 为空，因此会进入 sleep 状态
-2. QEMU 把 `a` 推入 UART FIFO
-3. UART 设置 `LSR_RX_READY` bit → PLIC 送 IRQ
-4. CPU trap → trap vector → trap handler → `devintr()`
-5. `devintr()` → `uartintr()` → 读 FIFO（通过 `uartgetc()`）
-6. `uartintr()` 调用 `consoleintr('a')`
-7. `consoleintr()` 把 `'a'` 放入 `cons.buf` 内
-    - 由于没有 `'\n'`，所以不会唤醒 `consoleread()`，立即 return
-8. 回到被抢占前正在执行的进程
+## 5.3 Real world: Copy-On-Write (COW) fork
 
-其中：
+Many kernels (though not xv6) use page faults to implement copy-on-write (COW) fork. The fork system call promises that the child sees memory whose initial content is the same as the parent’s memory at the time of the fork. One way to implement this is to copy the entire memory of the parent to newly allocated physical memory for the child; this is what xv6 does. Copying can be slow, and it would be more efficient if the child could share the parent’s physical memory. A straightforward implementation of this would not work, however, since it would cause the parent and child to disrupt each other’s execution with their writes to the shared stack and heap.
 
-- 第 2、3 步都是硬件（QEMU）处理的
-- 第三步是要走 `kernelvec` 还是 `uservec`，取决于发生 trap 时 CPU 正在哪个 mode 下
-  - 例如如果当时刚好 shell 调用了 `read()` 并正睡在 `sleep()` 中，那 CPU 就还处在 kernel space，因此会走 `kernelvec`
-  - 而如果 CPU 已经切去另一个 user process 了，那就会走 `uservec`
-  - 但不管走哪个，最后都会执行到 `devintr`  
-:::
+许多内核（虽然不包括 xv6）使用页错误来实现写时复制（COW）fork。fork 系统调用承诺子进程看到的内存初始内容与 fork 时父进程的内存相同。实现这一点的一种方法是将父进程的全部内存复制到为子进程新分配的物理内存中；这正是 xv6 所做的。复制过程可能很慢，如果子进程能共享父进程的物理内存，效率会更高。然而，直接实现这种共享是行不通的，因为父子进程对共享栈和堆的写入会干扰彼此的执行。
 
-## 5.3 Concurrency in drivers
+Copy-on-write fork causes parent and child to safely share physical memory by appropriate use of page-table permissions and page faults. The basic plan is for the parent and child to initially share all physical pages, but for each to map them read-only (with the PTE_w flag clear). Parent and child can then read from the shared physical memory. If either writes a shared page, the RISCV CPU raises a page-fault exception. A kernel supporting COW would respond by allocating a new page of physical memory and copying the shared page into that new page. Then kernel would change the relevant PTE in the faulting process’s page table to point to the copy and to allow writes as well as reads, and then resume the faulting process at the instruction that caused the fault. Because the PTE now allows writes, the re-executed store instruction will execute without a fault, and will modify a private copy of the page rather than the shared page.
 
-你可能已经注意到在 `consoleread` 和 `consoleintr` 中有调用 `acquire`，这些调用会获取锁，以保护 console driver 的数据结构不被并行访问。 在这里有三种并行风险：第一是两个不同 CPU 上的 process 可能同时调用 `consoleread`； 第二是硬件可能在某个 CPU 执行 `consoleread` 时触发 console（实际上是 UART）中断，打断该 CPU； 最后是中断可能发生在另一个 CPU 上，而此时某个 CPU 正在执行 `consoleread`。 第六章会说明如何使用锁来避免这些情况导致错误结果
+写时复制 fork 通过适当利用页表权限和页错误，使父子进程能够安全地共享物理内存。基本方案是让父子进程最初共享所有物理页，但将每个页都映射为只读（清除 PTE_W 标志）。随后，父子进程都可以从共享物理内存中读取数据。如果其中任何一方写入共享页，RISC-V CPU 就会触发页错误异常。支持 COW 的内核会通过分配一个新的物理内存页并将共享页内容复制到该新页中来做出响应。接着，内核会修改触发错误进程页表中的相关 PTE，使其指向该副本，并允许读写操作，然后在触发错误的指令处恢复该进程的执行。由于 PTE 现在允许写入，重新执行的存储（store）指令将不再触发错误，并会修改该页的私有副本而非共享页。
 
-driver 在处理并行时还有另一个需要注意的情况，那就是某个 process 可能正在等待某个装置的输入，但用来通知输入到达的中断可能是在另一个 process（或根本没有 process）执行时生成的。 因此，interrupt handler 无法预期它中断的 process 或代码是什么，例如 interrupt handler 无法直接使用当前 process 的 page table 去调用 `copyout`。 通常 interrupt handler 只会做一些简单的工作（例如将输入数据复制到缓冲区），然后唤醒 top-half 的代码来完成后续处理
+Copy-on-write requires book-keeping to help decide when physical pages can be freed, since each page can be referenced by a varying number of page tables depending on the history of forks, page faults, execs, and exits. This book-keeping allows an important optimization: if a process incurs a store page fault and the physical page is only referred to from that process’s page table, no copy is needed.
 
-::: tip  
-interrupt handler 不能依赖于当前 CPU 所执行的 context，因为它可能与触发中断的真正程序无关。 这是因为：
+写时复制需要进行簿记（book-keeping）工作，以帮助决定何时可以释放物理页，因为根据 fork、页错误、exec 和 exit 的历史记录，每个物理页可能被不同数量的页表引用。这种簿记还允许一项重要的优化：如果一个进程触发了存储页错误，且该物理页仅被该进程的页表引用，则无需进行复制。
 
-- 中断可能在任意时间点、任意 CPU 上发生
-- 没有保证当前在执行的就是那个等待输入的 process。 所以 interrupt handler 常只做 minimal 的事（如复制数据进 buffer），然后唤醒后续能正确处理的代码。这就是 top-half / bottom-half 设计的意义  
-:::
+Copy-on-write makes fork faster, since fork need not copy memory. Some of the memory will have to be copied later, when written, but it’s often the case that most of the memory never has to be copied. A common example is fork followed by exec: a few pages may be written after the fork, but then the child’s exec releases the bulk of the memory inherited from the parent. Copy-on-write fork eliminates the need to ever copy this memory. Furthermore, COW fork is transparent: no modifications to applications are necessary for them to benefit.
 
-## 5.4 Timer interrupts
+写时复制（Copy-on-write）使 fork 变得更快，因为 fork 不再需要复制内存。虽然部分内存稍后在写入时仍需复制，但通常情况下，大部分内存永远不需要被复制。一个常见的例子是 fork 后紧接着执行 exec：在 fork 之后可能会写入少量页面，但随后子进程的 exec 就会释放从父进程继承的大部分内存。写时复制 fork 消除了复制这部分内存的必要性。此外，COW fork 是透明的：应用程序无需进行任何修改即可从中受益。
 
-xv6 使用 timer interrupt 来维持系统对「目前时间」的认知，并在多个 compute-bound 的 process 之间进行切换。 timer interrupt 由接在每个 RISC-V CPU 上的时钟硬件所生成，xv6 会设置每个 CPU 的时钟硬件，让它定期对该 CPU 生成中断
+## 5.4 Real world: Demand paging
 
-start.c 中的代码（[kernel/start.c:53](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/start.c#L53)）会设置一些控制用的 bit，使 supervisor mode 可以访问 timer 控制寄存器，接著会请求第一个 timer interrupt。 `time` 控制寄存器会以固定速率自动递增，这提供了「目前时间」的概念。 `stimecmp` 寄存器中则存放一个时间点，当 `time` 递增到该时间点时，CPU 就会生成 timer interrupt。 换句话说，如果将 `stimecmp` 设为 `time` 加上某个值 `x`，就表示在 `x` 个时间单位之后会生成一个 interrupt。 对于 QEMU 的 RISC-V 模拟器来说，1000000 个时间单位大约等于 0.1 秒
+Yet another widely-used feature that exploits page faults is demand paging. In the exec system call, loads all of an application’s text and data into memory before starting the application.
 
-timer interrupt 会像其他装置中断一样，经由 `usertrap` 或 `kerneltrap` 和 `devintr` 发送进来。 timer interrupt 发生时，`scause` 的低位元会被设为 5； trap.c 中的 `devintr` 侦测到这种情况时，会调用 `clockintr`（[kernel/trap.c:164](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trap.c#L164)）。 `clockintr` 会将 ticks 递增，以让 kernel 能够跟踪时间流逝，这个递增动作只会在其中一个 CPU 上执行，以避免多个 CPU 同时让时间变快。 `clockintr` 也会唤醒那些正在 `sleep` 系统调用中等待的 process，并写入新的 `stimecmp` 值来调度下一次的 timer interrupt
+另一个广泛利用页错误的特性是请求分页。在 exec 系统调用中， 会在启动应用程序之前将其所有的代码段（text）和数据段加载到内存中。
 
-`devintr` 若遇到 timer interrupt，会返回 2，以通知 `kerneltrap` 或 `usertrap` 应该调用 `yield`，从而让 CPU 能够在多个可执行的 process 之间进行切换
+Since applications can be large and reading from disk takes time, this startup cost can be noticeable to users. To decrease startup time, a modern kernel doesn’t initially load the executable file into memory, but just creates the user page table with all PTEs marked invalid. The kernel starts the program running; each time the program uses a page for the first time, a page fault occurs, and in response the kernel reads the content of the page from disk and maps it into the user address space. Like COW fork and lazy allocation, the kernel can implement this feature transparently to applications.
 
-kernel 代码可能会在执行期间被 timer interrupt 打断，并因为 `yield` 而进行 context switch，这也是为什么 `usertrap` 初期的代码会小心地先存储像 `sepc` 这类的状态，然后才打开中断。 这也意味著在撰写 kernel 代码时必须考虑到会有这类 context switch 发生，它可能会在没有预警的情况下从某个 CPU 被切换到另一个 CPU 上执行
+由于应用程序可能很大且从磁盘读取需要时间，这种启动开销对用户来说是显而易见的。为了缩短启动时间，现代内核最初并不将可执行文件加载到内存中，而只是创建用户页表，并将所有页表项（PTE）标记为无效。内核开始运行程序；每当程序第一次使用某个页面时，就会触发页错误，作为响应，内核从磁盘读取该页面的内容并将其映射到用户地址空间。与 COW fork 和延迟分配一样，内核可以透明地为应用程序实现这一特性。
 
-## 5.5 Real world
+The programs running on a computer may need more memory than the computer has RAM. To cope gracefully, the operating system may implement paging to disk. The idea is to store only a fraction of user pages in RAM, and to store the rest on disk in a paging area. The kernel marks PTEs that correspond to memory stored in the paging area (and thus not in RAM) as invalid. If an application tries to use one of the pages that has been paged out to disk, the application will incur a page fault, and the page must be paged in: the kernel trap handler will allocate a page of physical RAM, read the page from disk into the RAM, and modify the relevant PTE to point to the RAM.
 
-和许多操作系统一样，xv6 在 kernel 执行期间也允许中断发生，甚至允许通过 `yield` 进行 context switch。 这么做的原因是希望即使在执行一些耗时且复杂的系统调用时，也能维持良好的反应速度。 不过，如前所述，在 kernel 中允许中断也会导入一些额外的复杂性； 因此，有些操作系统选择只在执行 user code 时才允许中断
+计算机上运行的程序所需的内存可能超过计算机拥有的 RAM 总量。为了优雅地应对这种情况，操作系统可以实现磁盘分页。其核心思想是仅在 RAM 中存储一部分用户页面，而将其余页面存储在磁盘的分页区中。内核将对应于存储在分页区（即不在 RAM 中）的内存的 PTE 标记为无效。如果应用程序尝试使用已分页到磁盘的页面，则会触发页错误，此时必须将该页换入：内核陷阱处理程序将分配一个物理 RAM 页，将该页从磁盘读取到 RAM 中，并修改相关的 PTE 以指向该 RAM。
 
-要完整支持一台典型电脑上所有装置，是一件非常繁琐的事，因为装置种类繁多，每个装置又有很多功能，而且装置与 driver 之间的通讯协定往往很复杂，甚至缺乏良好文件。 在许多操作系统中，driver 的代码量往往超过了 kernel 本身
+What happens if a page needs to be paged in, but there is no free physical RAM? In that case, the kernel must first free a physical page by paging it out or evicting it to the paging area on disk, and marking the PTEs referring to that physical page as invalid. Eviction is expensive, so paging performs best if it’s infrequent: if applications use only a subset of their memory pages and the union of the subsets fits in RAM. This property is often referred to as having good locality of reference. As with many virtual memory techniques, kernels usually implement paging to disk in a way that’s transparent to applications.
 
-UART driver 是通过读取 UART 控制寄存器，每次取回一个 byte 的方式来获取数据的； 因为是由软件主动驱动数据搬移的，所以这种模式称为「programmed I/O」。 programmed I/O 实现简单，但速度太慢，不适合高数据速率的应用。 需要高速搬移大量数据的装置通常会使用 direct memory access（DMA）的方式，例如现代的硬盘与网络装置都使用 DMA。 DMA 装置硬件会直接把接收到的数据写入 RAM，也会从 RAM 中读取要发送的数据。 对于 DMA 装置而言，driver 会先在 RAM 中准备好数据，然后只需写一次控制寄存器来告诉装置处理这些数据即可
+如果需要换入一个页面，但物理内存已满，会发生什么？在这种情况下，内核必须首先释放一个物理页，方法是将其换出或驱逐到磁盘上的分页区，并将指向该物理页的所有页表项（PTE）标记为无效。驱逐操作代价高昂，因此只有在不频繁发生时，分页性能才最佳：即应用程序仅使用其内存页的一个子集，且这些子集的并集能容纳在物理内存中。这种特性通常被称为具有良好的引用局部性。与许多虚拟内存技术一样，内核实现磁盘分页的方式通常对应用程序是透明的。
 
-当无法预测装置需要处理的时间点，但其频率又不太高时，使用中断是合理的。 但中断的 CPU 成本很高，因此像网络或硬盘这种高速装置会使用一些技巧来减少中断需求。 一种技巧是针对一整批收送请求只生成一次中断。 另一种技巧则是完全关掉中断，由 driver 定期检查装置是否需要处理，这种技巧称为 polling。 polling 适用于装置操作频率很高的情况，但若装置大多时间空闲，polling 会浪费大量 CPU 资源。 有些 driver 会根据装置目前的负载，动态地在 polling 和中断两种模式之间切换
+Computers often operate with little or no free physical memory, regardless of how much RAM the hardware provides. For example, cloud providers multiplex many customers on a single machine to use their hardware cost-effectively. As another example, users run many applications on smart phones in a small amount of physical memory. In such settings allocating a page may require first evicting an existing page. Thus, when free physical memory is scarce, allocation is expensive.
 
-UART driver 会先将收到的数据复制到 kernel 的缓冲区，再复制到 user space。 这样的作法在低数据速率的环境下是合理的，但对于生成或消耗数据速度很快的装置，这样的两次复制会显著影响效能。 有些操作系统能够直接在 user-space buffer 和装置硬件之间搬移数据，这通常需要通过 DMA 来完成
+无论硬件提供多少物理内存，计算机在运行时往往只有很少甚至没有空闲内存。例如，云服务提供商在单台机器上复用多个客户，以提高硬件的成本效益。又如，用户在智能手机有限的物理内存中运行许多应用程序。在这些场景下，分配一个页面可能需要先驱逐一个现有页面。因此，当空闲物理内存稀缺时，分配操作的代价是昂贵的。
 
-如第一章所述，console 在应用程序看来就像是一般的文件，应用程序会使用 `read` 和 `write` 系统调用来进行输入与输出。 不过，有些装置功能无法通过标准的文件系统调用来表示（例如，打开或关闭 console driver 的 line buffer）。 Unix 操作系统会提供 `ioctl` 系统调用来处理这类情况
+Lazy allocation and demand paging are particularly advantageous when free memory is scarce and programs actively use only a fraction of their allocated memory. These techniques can also avoid the work wasted when a page is allocated or loaded but either never used or evicted before it can be used.
 
-有些电脑用途要求系统必须在固定时间内做出反应。 例如在重视安全性的系统中，错过期限可能会导致灾难。 xv6 不适合用在硬即时（hard real-time）的情境，硬即时系统的操作系统通常会以函数库的形式与应用程序链接，让系统能分析出最坏情况的反应时间 。xv6 也不适合用于软即时（soft real-time）应用，也就是偶尔错过期限可以接受的情境，因为 xv6 的调度器太过简单，而且有些 kernel 的程序路径会在长时间内关闭中断
+当空闲内存稀缺且程序仅活跃使用其分配内存的一小部分时，延迟分配和请求分页尤其具有优势。这些技术还可以避免不必要的工作，例如避免分配或加载了一个页面，但该页面从未被使用，或者在被使用前就被驱逐了。
 
-::: tip  
-硬即时系统（例如医疗、飞控）要求绝不能 miss deadline，而软即时系统（例如影音播放）容许偶尔 miss，但仍要求反应快。 但 xv6 的调度器过于简单，且某些 kernel 区段会 disable interrupt 太久，这让它无法保证 deadline，故两种都不适合  
-:::
+## 5.5 Real world: Memory-mapped files
+
+Other features that combine paging and page-fault exceptions include automatically extending stacks and memory-mapped files, which are files that a program maps into its address space using the mmap system call so that the program can read and write them using load and store instructions.
+
+结合分页和页错误异常的其他特性还包括自动扩展栈和内存映射文件。内存映射文件是指程序使用 mmap 系统调用将其映射到自身地址空间的文件，这样程序就可以使用加载（load）和存储（store）指令对其进行读写。
 
 ## 5.6 Exercises
 
-1. 修改 uart.c，让它完全不使用中断。 你可能也需要修改 console.c
-2. 为网卡新增一个 driver
+1. Write a user program that grows its address space by one byte by calling sbrk (1). Run the program and investigate the page table for the program before the call to sbrk and after the call to sbrk. How much space has the kernel allocated? What does the PTE for the new memory contain?
+   编写一个用户程序，通过调用 sbrk(1) 将其地址空间增加一个字节。运行该程序，并研究调用 sbrk 之前和之后该程序的页表。内核分配了多少空间？新内存的页表项（PTE）包含什么内容？
+2. Implement COW fork.
+   实现写时复制（COW）fork。
+3. Implement mmap.
+   实现 mmap。
 
-## Bibliography
-
-- <a id="1">[1]</a>：Martin Michael and Daniel Durich. The NS16550A: UART design and application considerations. http://bitsavers.trailing-edge.com/components/national/_appNotes/AN-0491.pdf, 1987.

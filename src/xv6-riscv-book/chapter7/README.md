@@ -1,6 +1,6 @@
 ---
-title: xv6 riscv book chapter 7：Scheduling
-date: 2025-08-03
+title: xv6 riscv book chapter 7：Locking
+date: 2025-07-27
 tag: 
 - OS
 - risc-v
@@ -8,737 +8,349 @@ category:
 - OS
 - risc-v
 ---
-# xv6 riscv book chapter 7：Scheduling
 
-任何操作系统在执行时，通常会有比电脑实际拥有的 CPU 数量还多的 process，因此必须有一套计划来让这些 process 能够轮流使用 CPU。 理想上，这种共享机制对用户的 process 来说应该要是透明的。 常见的做法是通过「multiplexing」的方式，把多个 process 映射（multiplex）到实际的硬件 CPU 上，让每个 process 生成拥有自己虚拟 CPU 的错觉。 本章会说明 xv6 是如何实现这样的 multiplexing 的
+# xv6 riscv book chapter 7：Locking
 
-## 7.1 Multiplexing
+Most kernels, including xv6, interleave the execution of multiple activities. One source of interleaving is multiprocessor hardware: computers with multiple CPUs executing independently, such as xv6’s RISC-V. These multiple CPUs share physical RAM, and xv6 exploits the sharing to maintain kernel data structures that all CPUs read and write. This sharing raises the possibility of one CPU reading a data structure while another CPU is mid-way through updating it, or even multiple CPUs updating the same data simultaneously; without careful design such parallel access is likely to yield incorrect results or a broken data structure. Even on a uniprocessor, the kernel may switch the CPU among a number of threads, causing their execution to be interleaved. Finally, a device interrupt handler that modifies the same data as some interruptible code could damage the data if the interrupt occurs at just the wrong time. The word concurrency refers to situations in which multiple instruction streams are interleaved, due to multiprocessor parallelism, thread switching, or interrupts.
 
-xv6 的 multiplexing 机制会在两种情况下让某个 CPU 从一个 process 切换到另一个。 第一种是当 process 调用会阻塞（也就是需要等待某些事件才能继续）的系统调用时，例如 `read`、`wait` 或 `sleep`，此时会通过 xv6 的 `sleep` 与 `wakeup` 机制来切换； 第二种是为了应对那些长时间运算而不会阻塞的 process，xv6 会定期强制让 CPU 切换到其他 process。 前者称为「自愿切换（voluntary switches）」，后者则称为「非自愿切换（involuntary switches）」。 通过这些切换，xv6 创造出每个 process 各自拥有一颗 CPU 的错觉
+大多数内核（包括 xv6）都会交替执行多个活动。交替执行的一个来源是多处理器硬件：具有多个独立执行 CPU 的计算机，例如 xv6 所运行的 RISC-V。这些多个 CPU 共享物理内存，xv6 利用这种共享来维护所有 CPU 都会读写的内核数据结构。这种共享带来了一种可能性，即一个 CPU 在读取数据结构时，另一个 CPU 正处于更新该结构的中间过程，甚至多个 CPU 同时更新同一数据；如果没有经过精心设计，这种并行访问很可能会产生错误的结果或损坏数据结构。即使在单处理器上，内核也可能在多个线程之间切换 CPU，导致它们的执行交替进行。最后，如果设备中断处理程序修改了与某些可中断代码相同的数据，且中断恰好在错误的时间发生，则可能会损坏数据。并发（concurrency）一词是指由于多处理器并行、线程切换或中断而导致多个指令流交替执行的情况。
 
-要实现 multiplexing 有几个挑战：
+Kernels are full of concurrently-accessed data. For example, two CPUs could simultaneously call kalloc, thereby concurrently popping from the head of the free list. Kernel designers like to allow for lots of concurrency, since it can yield increased performance through parallelism, and increased responsiveness. However, as a result kernel designers must convince themselves of correctness despite such concurrency. There are many ways to arrive at correct code, some easier to reason about than others. Strategies aimed at correctness under concurrency, and abstractions that support them, are called concurrency control techniques.
 
-- 第一，该如何从一个 process 切换到另一个？
-  - 基本的作法是存储与还原 CPU 的寄存器，不过因为这种行为无法用 C 来表达，所以会比较麻烦
-- 第二，该如何让「强制切换」对 user process 来说是透明的？
-  - xv6 采用了一个标准技巧，由硬件 timer 所触发的中断来驱动 context switch
-- 第三，由于所有 CPU 都会在同一组 process 间切换，因此必须设计一套锁定策略以避免 race condition
-- 第四，当一个 process 结束时，它的内存与其他资源必须被释放，但 process 自己无法完成这些释放动作
-  - 例如 process 无法在其还在使用 kernel stack 的情况下释放那块 stack，需要其他 thread 帮它收尾
-- 第五，对于多核机器，每颗 CPU 都必须记住自己目前正在执行哪个 process，这样系统调用才能正确地作用在那个 process 的 kernel 状态上
-- 最后，`sleep` 和 `wakeup` 机制允许 process 放弃 CPU，并等待其他 process 或中断将它唤醒，而这里需要特别小心，避免 race condition 导致唤醒通知被遗失
+内核中充满了并发访问的数据。例如，两个 CPU 可能会同时调用 kalloc，从而并发地从空闲链表头部弹出元素。内核设计者希望允许大量的并发，因为这可以通过并行性提高性能，并增强响应能力。然而，因此内核设计者必须证明在存在此类并发的情况下代码的正确性。实现正确代码的方法有很多，其中一些比另一些更容易推理。旨在确保并发下正确性的策略，以及支持这些策略的抽象，被称为并发控制技术。
 
-## 7.2 Code: Context switching
+Xv6 uses a number of concurrency control techniques, depending on the situation; many more are possible. This chapter focuses on a widely used technique: the lock. A lock provides mutual exclusion, ensuring that only one CPU at a time can hold the lock. If the programmer associates a lock with each shared data item, and the code always holds the associated lock when using an item, then the item will be used by only one CPU at a time. In this situation, we say that the lock protects the data item. Although locks are an easy-to-understand concurrency control mechanism, the downside of locks is that they can limit performance, because they serialize concurrent operations.
 
-图 7.1 说明了从一个 user process 切换到另一个时所经历的步骤：首先是从 user space 发出 trap（可能是 system call 或 interrupt），转入旧 process 的 kernel thread； 接著切换到目前 CPU 的 scheduler thread； 然后切换到新 process 的 kernel thread； 最后从 trap return 回到新的 user-level process
+Xv6 根据不同情况使用了多种并发控制技术；除此之外还有许多其他可能的技术。本章重点介绍一种被广泛使用的技术：锁（lock）。锁提供互斥（mutual exclusion），确保每次只有一个 CPU 可以持有该锁。如果程序员为每个共享数据项关联一个锁，并且代码在操作该项时始终持有相关的锁，那么该项在同一时刻就只能被一个 CPU 使用。在这种情况下，我们称该锁保护了该数据项。虽然锁是一种易于理解的并发控制机制，但其缺点是会限制性能，因为它们将并发操作串行化了。
 
-xv6 为 scheduler 使用了独立的 thread（各自拥有寄存器与 stack 的保存空间），因为让 scheduler 在任意 process 的 kernel stack 上执行并不安全：其他 CPU 可能会在这段期间唤醒该 process 并开始执行，若两个 CPU 共用同一个 stack，会造成灾难性的后果。 为了处理多颗 CPU 同时执行、并有 process 要放弃 CPU 的情况，xv6 为每个 CPU 分配了独立的 scheduler thread。 在这一节中，我们将会详细探讨 kernel thread 与 scheduler thread 之间切换的具体实现方式
+The rest of this chapter explains why xv6 needs locks, how xv6 implements them, and how it uses them.
 
-![（Figure 7.1: Switching from one user process to another. In this example, xv6 runs with one CPU (and thus one scheduler thread).）](image/switch.png)
+本章接下来的部分将解释 xv6 为什么需要锁、xv6 如何实现锁以及如何使用锁。
 
-从一个 thread 切换到另一个 thread 的过程，需要将旧 thread 的 CPU 寄存器存储下来，并还原新 thread 先前存储的那些寄存器。 由于 stack pointer 和 program counter 都会被存储与还原，这也表示 CPU 将会切换至新的 stack，并且执行新的代码
 
-`swtch` 函数负责存储与还原寄存器，实现 kernel thread 间的切换。 `swtch` 并不直接知道所谓的「thread」是什么，它只负责存储与还原一组 RISC-V 的寄存器，这组寄存器的集合被称作「context」。 当某个 process 要放弃 CPU 时，它的 kernel thread 会调用 `swtch`，把自己的 context 存储起来，并还原 scheduler 的 context
+## 7.1 Races
 
-每个 context 都存在 `struct context`（[kernel/proc.h:2](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.h#L2)）里，这个结构会被放在某个 process 的 `struct proc` 或某个 CPU 的 `struct cpu` 中。 `swtch` 会接收 `struct context *old` 和 `struct context *new` 这两个引数，并将目前的寄存器存储到 `old`，从 `new` 中加载先前存储的寄存器，然后 return
+As an example of why we need locks, consider two processes with exited children calling the wait system call on two different CPUs. wait frees the child’s memory. Thus on each CPU, the kernel will call kfree to free the children’s memory pages. The kernel allocator maintains a linked list of free pages: kalloc() (3027) pops a page of memory from the list, and kfree() (3005) pushes a page onto the list. For best performance, we might hope that the kfrees of the two parent processes would execute in parallel without either having to wait for the other, but this would not be correct given xv6’s kfree implementation.
 
-现在让我们来跟踪一个 process 如何通过 `swtch` 切换进入 `scheduler` 的。 在第四章中我们看到，中断的结束阶段中有一种情况是 `usertrap` 调用 `yield`。 而 `yield` 接著会调用 `sched`，`sched` 再调用 `swtch`，把目前的 context 存到 `p->context` 中，并切换到先前存储在 `cpu->context` 的 scheduler context（[kernel/proc.c:506](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L506)）
+为了说明为什么需要锁，请考虑两个拥有已退出子进程的进程，它们在两个不同的 CPU 上调用 wait 系统调用。wait 会释放子进程的内存。因此，在每个 CPU 上，内核都会调用 kfree 来释放子进程的内存页。内核分配器维护着一个空闲页链表：kalloc() (3027) 从链表中弹出一个内存页，而 kfree() (3005) 将一个内存页推入链表。为了获得最佳性能，我们可能希望两个父进程的 kfree 操作能够并行执行，而不需要互相等待，但考虑到 xv6 的 kfree 实现，这样做是不正确的。
 
-`swtch`（[kernel/swtch.S:3](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/swtch.S#L3)）只会存储 callee-saved 寄存器，而 caller-saved 寄存器则会由 C 编译器在调用端负责存储到 `stack` 上。 `swtch` 知道每个寄存器对应到 `struct context` 中的哪个成员，以及该成员的偏移量。 它不会存储 program counter，而是存储 `ra` 寄存器，这个寄存器中存放的是调用 `swtch` 那一行指令的 return address
+Figure 7.1 illustrates the setting in more detail: the linked list of free pages is in memory that is shared by the two CPUs, which manipulate the list using load and store instructions. (In reality, the processors have caches, but conceptually multiprocessor systems behave as if there were a single, shared memory.) If there were no concurrent requests, you might implement a list push operation as follows:
 
-接著，`swtch` 从新的 context 还原寄存器，这些值是先前某次 `swtch` 存储的。 当 `swtch` 调用 `ret` 返回时，它会回到还原后的 `ra` 所指向的那行指令，也就是新 thread 先前调用 `swtch` 的那个位置。 同时，因为 `sp` 已被还原为新 thread 的 stack pointer，因此执行也会从新 thread 的 stack 上继续
-
-在我们这个例子中，`sched` 会调用 `swtch`，并切换到 `cpu->context`，也就是这颗 CPU 专属的 scheduler context。 这份 context 是在先前某个时刻，由 scheduler 调用 `swtch` 并切换到现在这个 process 时所存储的（[kernel/proc.c:466](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L466)）。 所以当我们目前跟踪的这次 `swtch` return 时，它实际上不是回到 `sched`，而是回到 scheduler，而且此时 stack pointer 已经是这颗 CPU 的 scheduler stack 了
-
-::: tip  
-根据 [RISC-V Calling Conventions](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc)，寄存器口语上会分成两类：
-
-- caller-saved registers：调用者在调用 function 前要自己备份，包含 `a0–a7`, `t0–t6`, `ra` 等
-- callee-saved registers：被调用者（像 `swtch`）必须保存与还原，包含 `s0–s11`, `sp` 等
-
-这可以在点进去一开始的表格中的「Preserved across calls?」栏位看到，为「Yes」的就是文中说的 callee-saved register。 而 `ra` 虽然不是 callee-saved register，但 `swtch` 为了做 context switch 所以有存
-
-而 `swtch` 做的事基本上就是：
-
-1. 把被换出的 process 的 context 存到 `struct context *old`
-2. 把换进来要执行的 process 的 context 用 `struct context *new` 的内容复原
-3. 利用 `ret` 回到 `new->ra` 处执行
-
-而对于文中的例子，由于它是由 `sched` 去调用 `swtch`，所以 `new` 填的会是 `&mycpu()->context`，也就是一个 pre-CPU 的 scheduler context  
-:::
-
-## 7.3 Code: Scheduling
-
-上一节我们探讨了 `swtch` 的底层细节； 现在我们把来观察 process 的 kernel thread 是如何通过 scheduler 切换到另一个 process 的。 scheduler 是每颗 CPU 上的一个特殊的 thread，这个 thread 执行的是 `scheduler` 函数。 这个函数会负责选出下一个要执行的 process。 当某个 process 想放弃 CPU 时，它必须先获取自己的 process lock `p->lock`，释放它持有的其他 lock，更新自己的状态（`p->state`），然后调用 `sched`。 你可以在 `yield`（[kernel/proc.c:512](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L512)）、`sleep` 和 `exit` 中看到这个流程
-
-接著 `sched` 会再次确认这些条件是否已被满足（[kernel/proc.c:496-501](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L496-L501)），并检查一个隐含的条件：既然有持有锁，则必须确保中断已被关闭。 最后，`sched` 调用 `swtch`，将当前的 context 存入 `p->context`，并切换到 `cpu->context` 中的 scheduler context。 `swtch` 返回时会回到 scheduler 的 stack，就好像当初 scheduler 调用的 `swtch` 返回了一样（[kernel/proc.c:466](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L466)）。 然后 scheduler 继续它的 for 循环，找下一个 process 来执行，再切换过去，如此反复循环
-
-::: tip  
-- `scheduler()` 是每颗 CPU 的主控 loop，会寻找 runnable process，并执行它
-- 被执行的 process 如果想释放 CPU（例如主动调用 `yield`、被 `sleep` 阻塞、或是 `exit`），就会开始切换流程
-- 这时 `sched()` 函数会做两件事：确认合法状态、调用 `swtch` 并切回 scheduler
-
-此处 `swtch` 不是随便 return 的，而是会直接回到当初 `scheduler()` 调用 `swtch()` 的那一点，这依赖于之前 `scheduler()` 有正确地保存自己的 context  
-:::
-
-我们刚刚看到 xv6 在调用 `swtch` 的整个过程中会持续持有 `p->lock`：调用 `swtch` 的代码必须事先持有这把 lock，并且这把 lock 的控制权会一并传给被切换过去的代码。 这样的安排并不常见：更常见的做法是持有锁的一方同时负责释放它。 但 xv6 不能这样做，因为 `p->lock` 保护了 `p->state` 与 `p->context` 栏位的状态不变性，而这些不变性在执行 `swtch` 的时候会被暂时破坏掉
-
-例如，如果在执行 `swtch` 期间没有持有 `p->lock`，那么另一颗 CPU 可能会在 `yield` 将 process 状态设为 `RUNNABLE` 之后、但 `swtch` 还没释出 stack 之前，就抢先执行这个 process，导致两个 CPU 同时在用同一个 stack，造成灾难
-
-因此，一旦 `yield` 开始修改 process 的状态，使它变成 `RUNNABLE`，那就必须持续持有 `p->lock`，直到系统恢复状态一致为止：最早能释放 lock 的时间点是在 scheduler（它使用自己的 stack 执行）清除 `c->proc` 之后。 反过来说，当 scheduler 开始把某个 `RUNNABLE` process 转换成 `RUNNING` 时，也不能在 `swtch` 之前释放 lock，而是要等到 process 的 kernel thread 真正开始执行（例如在 `yield` 里）之后才行
-
-kernel thread 唯一会放弃 CPU 的地方是在 `sched`，而它总会切换回 scheduler 中的同一段位置，然后 scheduler 几乎又总会切换到某个先前调用过 `sched` 的 kernel thread。 因此，如果你打印出 xv6 切换线程所在的行号，你会看到一个很简单的模式：466、506、466、506，这样反复。 这种通过 thread switch 有意地把控制权交给彼此的程序，有时被称作 coroutines； 在这个例子中，`sched` 和 `scheduler` 就是彼此的 coroutine
-
-::: tip  
-假设 CPU 0 上的 process A 调用了 `yeild` 放弃 CPU，此时在 `yeild` 内会将 `p->lock` 上锁，将 `p->state` 改成 `RUNNABLE`，然后调用 `sched`：
+图 7.1 更详细地展示了这一环境：空闲页链表位于两个 CPU 共享的内存中，CPU 通过加载（load）和存储（store）指令来操作该链表。（实际上，处理器拥有缓存，但在概念上，多处理器系统的行为就像是拥有一个单一的共享内存。）如果没有并发请求，你可能会像下面这样实现链表的 push 操作：
 
 ```c
-// Give up the CPU for one scheduling round.
-void
-yield(void)
-{
-  struct proc *p = myproc();
-  acquire(&p->lock);
-  p->state = RUNNABLE;
-  sched();
-  release(&p->lock);
-}
-```
-
-接著 `sched` 会调用 `swtch`：
-
-```c
-// Switch to scheduler.  Must hold only p->lock
-// and have changed proc->state. Saves and restores
-// intena because intena is a property of this
-// kernel thread, not this CPU. It should
-// be proc->intena and proc->noff, but that would
-// break in the few places where a lock is held but
-// there's no process.
-void
-sched(void)
-{
-  int intena;
-  struct proc *p = myproc();
-
-  if(!holding(&p->lock))
-    panic("sched p->lock");
-  if(mycpu()->noff != 1)
-    panic("sched locks");
-  if(p->state == RUNNING)
-    panic("sched RUNNING");
-  if(intr_get())
-    panic("sched interruptible");
-
-  intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
-  mycpu()->intena = intena;
-}
-```
-
-而如前面所述，`swtch` 本身只做 context 的存储与还原，然后 return，这里 `ret` 会回到 scheduler context：
-
-```asm
-swtch:
-        sd ra, 0(a0)
-        sd sp, 8(a0)
-        sd s0, 16(a0)
-        sd s1, 24(a0)
-        sd s2, 32(a0)
-        sd s3, 40(a0)
-        sd s4, 48(a0)
-        sd s5, 56(a0)
-        sd s6, 64(a0)
-        sd s7, 72(a0)
-        sd s8, 80(a0)
-        sd s9, 88(a0)
-        sd s10, 96(a0)
-        sd s11, 104(a0)
-
-        ld ra, 0(a1)
-        ld sp, 8(a1)
-        ld s0, 16(a1)
-        ld s1, 24(a1)
-        ld s2, 32(a1)
-        ld s3, 40(a1)
-        ld s4, 48(a1)
-        ld s5, 56(a1)
-        ld s6, 64(a1)
-        ld s7, 72(a1)
-        ld s8, 80(a1)
-        ld s9, 88(a1)
-        ld s10, 96(a1)
-        ld s11, 104(a1)
-        
-        ret
-```
-
-但在执行 `swtch` 的期间，context 还没搬完，到目前整个流程都还跟一般的 function call 一样，所以 CPU 0 还处在 process A 的 stack 上。 此时如果 CPU 1 正在执行 `scheduler`，看到 process A 的 `p->state` 为 `RUNNABLE`，就有可能尝试调用 `acquire(p->lock)` 并把它抓进去执行，成功的话两个 CPU 就会同时执行 process A 且共用了它的 stack，因此才要上锁，让 `acquire(p->lock)` 失败
-
-下面为 `scheduler` 的实现：
-
-```c
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
-void
-scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-
-  c->proc = 0;
-  for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting. Then turn them back off
-    // to avoid a possible race between an interrupt
-    // and wfi.
-    intr_on();
-    intr_off();
-
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
-      }
-      release(&p->lock);
-    }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
-      asm volatile("wfi");
-    }
-  }
-}
-```
-
-可以看到在内层的 for loop 中会先调用 `acquire`，然后才会确认 `p->state` 是不是 `RUNNABLE` 的。 这边虽然会依序对 process array 中的每个 process 做 `acquire`，但这其实并没有关系，不会有卡住的问题，因为大部分的时候 `p->lock` 是空闲的，process 在 user space 跑的时候不会上锁，只有在向上面 `swtch` 这种期间才会持锁  
-
-再来你会看到 `yield` 里面在 `sched` 之后还调用了 `release(&p->lock)`，而其对应的 `sched` 内，在 `swtch(&p->context, &mycpu()->context)` 之后做了 `mycpu()->intena = intena;` 这件事
-
-这是因为当 process A 被换出 CPU 0 时，其存储的位置是在 `swtch(&p->context, &mycpu()->context)` 这行，因此之后 process A 被换回来的时候，它会依序再由原路径返回，下面是一个示意用的流程（我画好久）：
-
-```lua
-Process A
-├─ ...
-└─ yield()
-   ├─ acquire(A.lock)                                            ← A 上鎖
-   ├─ A.state = RUNNABLE
-   └─ sched()
-      └─ swtch(&p->context, &cpu->scheduler)                     ← 鎖仍在 A 手上
-          └─► 進入 scheduler()  (CPU 專屬 stack)
-              ├─ c->proc = 0;
-              ├─ found = 1;
-              ├─ release(A.lock)                                 ← 第一次釋放 A 的鎖
-              ├─ for 迴圈掃表，找到 Process B
-              ├─ acquire(B.lock)
-              ├─ B.state = RUNNING
-              └─ swtch(&cpu->scheduler, &B.context)
-                  └─► 進入 Process B（執行一段時間…）
-                      … B 透過 yield()/sleep() 等放棄 CPU …
-                  ◄─ 回到 scheduler()
-                      ├─ c->proc = 0
-                      ├─ found = 1;
-                      ├─ release(B.lock)
-                      ├─ 找到 Process A (再次 acquire(A.lock))    ← A 再度上鎖
-                      ├─ p->state = RUNNING
-                      └─ swtch(&cpu->scheduler, &p->context)
-                          └─► 回到 Process A 的 sched()
-
-      ◄─ 回到 sched()         (A 的 kernel stack)
-         ├─ mycpu()->intena = intena
-         └─ return 回到 yield()
-
-   ◄─ yield() 尾端
-      └─ release(A.lock)                                         ← 第二次釋放 A 的鎖
-```  
-:::
-
-有一种情况下，scheduler 调用 `swtch` 后不会进入 `sched`。 `allocproc` 会把新 process 的 context 中的 `ra` 设为 `forkret`（[kernel/proc.c:524](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L524)），这样这个 process 第一次被切入时，`swtch` 就会「return」到那个函数的开头。 `forkret` 的存在是为了释放 `p->lock`； 否则，因为这个新 process 需要回到 user space（就像从 fork return 一样），它本来可以直接从 `usertrapret` 开始执行
-
-::: tip  
-这是 fork 新 process 的特殊处理：
-
-- 新 process 还没有执行过，所以它没有先前的 `swtch` return 点
-- `allocproc` 人为设一个 `context.ra = forkret`，让第一次执行时 `swtch` 能跳进去
-- `forkret` 的任务是先完成 kernel 端的收尾（例如释放锁），然后才进入 `usertrapret`，跳回 user space
-
-这样做可让新建 process 也能使用与其他 process 相同的切换逻辑  
-:::
-
-`scheduler`（[kernel/proc.c:445](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L445)）会跑一个无限循环：找出一个可执行的 process，执行它直到它释放 CPU，再重复这个流程。 scheduler 会遍历整个 process table，寻找状态为 `RUNNABLE` 的 process。 一旦找到，它会设置这颗 CPU 的 `c->proc` 指针，将该 process 的状态设为 `RUNNING`，然后调用 `swtch` 开始执行它（[kernel/proc.c:461-466](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L461-L466)）
-
-## 7.4 Code: mycpu and myproc
-
-xv6 经常需要获取目前正在执行的 process 所对应的 `proc` 结构的指针。 在单核系统中，可以使用一个全域变量来指向当前的 `proc`。 但这在多核机器上就行不通了，因为每个 CPU 都可能在执行不同的 process。 我们可以通过「每颗 CPU 都拥有自己独立的一组寄存器」这件事来解决这个问题
-
-当某颗 CPU 正在执行 kernel code 时，xv6 保证这颗 CPU 的 `tp` 寄存器会存储它的 hartid。 RISC-V 为每颗 CPU 指派了一个唯一的 hartid。 `mycpu` 函数（[kernel/proc.c:74](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L74)）会使用 `tp` 来索引 `struct cpu` 的数组，并返回指向目前这颗 CPU 的 `struct cpu` 的指针。 `struct cpu`（[kernel/proc.h:22](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.h#L22)）中包含了一个指向当前正在这颗 CPU 上执行的 `struct proc` 的指针（若有的话）、这颗 CPU 所对应的 scheduler thread 的寄存器快照、以及用来管理中断关闭的 spinlock 巢状层数
-
-要让每颗 CPU 的 `tp` 保持对应的 hartid，其实需要一点额外处理，因为用户程序是可以随意修改 `tp` 的。 `start` 函数会在 CPU 的开机过程早期、仍处于 machine mode 时设置 `tp`（[kernel/start.c:45](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/start.c#L45)）。 `usertrapret` 会把 `tp` 存储在 trampoline page 中，以防用户程序改动了它。 最后，`uservec` 在从 user space 进入 kernel 时会还原之前存储的 `tp`（[kernel/trampoline.S:78](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/trampoline.S#L78)）。 编译器保证在 kernel code 中永远不会去修改 `tp`。 如果 xv6 可以直接向 RISC-V 硬件查询目前的 hartid 会更方便，但 RISC-V 规范中只有 machine mode 才能这么做，supervisor mode 不行
-
-`cpuid` 和 `mycpu` 的返回值比较脆弱（fragile），如果在这之后发生 timer 中断，导致目前这条 thread 放弃 CPU，然后稍后被排到另一颗 CPU 上执行，那么原先返回的值就会失效。 为了避免这个问题，xv6 要求调用这些函数的代码在使用期间必须先关闭中断，等到使用完毕后再重新打开
-
-函数 `myproc`（[kernel/proc.c:83](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L83)）会返回目前正在当前 CPU 上执行的 process 的 `struct proc` 指针。 `myproc` 在执行过程中会先关闭中断，接著调用 `mycpu`，从 `struct cpu` 中获取目前的 `c->proc`，最后再重新打开中断。 `myproc` 的返回值在中断打开的情况下也可以安全使用：即使 timer 中断将目前的 process 移动到另一颗 CPU，指向这个 process 的 `struct proc` 指针仍然是同一个
-
-## 7.5 Sleep and wakeup
-
-调度与锁有助于把一个线程的行为对其他线程隐藏起来，但我们也需要一些抽象工具来让线程之间可以有意识地交互。 举例来说，xv6 中 pipe 的读取端可能需要等待写入端生成数据； 父 process 调用 `wait` 时可能要等子 process 结束； 而一个读硬盘的 process 则需要等待硬盘装置完成数据读取
-
-xv6 kernel 在这些（以及其他许多）情境中会使用名为 sleep 与 wakeup 的机制。 sleep 让 kernel 线程可以等待特定事件； 而另一个线程则可以调用 wakeup 来通知等待某个事件的线程可以继续执行了。 sleep 和 wakeup 常被称为「顺序协调（sequence coordination）」或「条件同步（conditional synchronization）」机制
-
-sleep 和 wakeup 提供的是一种相对底层的同步接口。 为了说明它们在 xv6 中的运行方式，我们将使用它们来构建一个较高层级的同步机制，称为 semaphore（但 xv6 并未实际使用 semaphore）。 一个 semaphore 会维护一个计数器，并提供两种操作：V 操作（由生产者使用）会将计数器加一； P 操作（由消费者使用）会等计数器变为非零值，然后将其减一并返回。 假设只有一个生产者线程与一个消费者线程，其分别在不同的 CPU 上执行，并且编译器没有做过度最佳化，那么以下的实现将是正确的：
-
-```c
-struct semaphore {
-  struct spinlock lock;
-  int count;
+struct element {
+    int data;
+    struct element *next;
 };
-
-void 
-V(struct semaphore *s)
-{
-  acquire(&s->lock);
-  s->count += 1;
-  release(&s->lock);
-}
-
+struct element *list = 0;
 void
-P(struct semaphore *s)
+push(int data)
 {
-  while(s->count == 0)
-    ;
-  acquire(&s->lock);
-  s->count -= 1;
-  release(&s->lock);
+    struct element *l;
+    l = malloc(sizeof *l);
+    l->data = data;
+    l->next = list;
+    list = l;
+```
+
+
+17 } This implementation is correct if executed in isolation. However, the code is not correct if more than one copy executes concurrently. If two CPUs execute push at the same time, both might execute line 15 as shown in Fig 7.1, before either executes line 16, which results in an incorrect outcome as illustrated by Figure 7.2. There would then be two list elements with next set to the same former value of list. When the two assignments to list happen at line 16, the second one will overwrite the first; the element involved in the first assignment will be lost.
+
+如果独立执行，这个实现是正确的。然而，如果同时执行多个副本，这段代码就不正确了。如果两个 CPU 同时执行 push，它们可能都会在其中任何一个执行第 16 行之前，先执行图 7.1 所示的第 15 行，这将导致如图 7.2 所示的错误结果。届时将有两个链表元素的 next 被设置为相同的 list 旧值。当第 16 行发生两次对 list 的赋值时，第二次赋值将覆盖第一次；涉及第一次赋值的元素将会丢失。
+
+The lost update at line 16 is an example of a race. A race is a situation in which a memory location is accessed concurrently, and at least one access is a write. A race is often a sign of a bug, either a lost update (if the accesses are writes) or a read of an incompletely-updated data structure. The outcome of a race depends on the machine code generated by the compiler, the timing of the two CPUs involved, and how their memory operations are ordered by the memory system, which can make race-induced errors difficult to reproduce and debug. For example, adding print statements while debugging push might change the timing of the execution enough to make the race disappear.
+
+第 16 行的丢失更新是竞态（race）的一个例子。竞态是指多个进程并发访问同一个内存地址，且至少有一个访问是写入操作的情况。竞态通常是 bug 的标志，要么是丢失更新（如果访问是写入），要么是读取到了更新不完整的数据结构。竞态的结果取决于编译器生成的机器码、涉及的两个 CPU 的时序，以及内存系统对它们内存操作的排序方式，这使得由竞态引起的错误难以复现和调试。例如，在调试 push 时添加打印语句可能会改变执行时序，足以让竞态消失。
+
+The usual way to avoid races is to use a lock. Locks ensure mutual exclusion, so that only one CPU at a time can execute the sensitive lines of push; this makes the scenario above impossible. The correctly locked version of the above code adds just a few lines (highlighted in yellow):
+
+避免竞态的常用方法是使用锁（lock）。锁确保了互斥（mutual exclusion），使得一次只有一个 CPU 可以执行 push 中的敏感行；这让上述场景变得不可能发生。上述代码的正确加锁版本仅增加了几行（以黄色高亮）：
+
+```c
+struct element *list = 0;
+struct lock listlock;
+void
+push(int data)
+{
+    struct element *l;
+    l = malloc(sizeof *l);
+    l->data = data;
+acquire(&listlock);
+    l->next = list;
+    list = l;
+    release(&listlock);
 }
 ```
 
-但上述的实现非常低效。 若生产者很少会被执行，消费者就会把大部分的时间花在 while 循环中自旋，等待 `count` 变成非零值。 消费者所占用的 CPU 应该可以用来做更有生产力的事，而不是通过不断轮询 `s->count` 来忙等。 若要避免这种忙等，我们就需要让消费者能够让出 CPU，等到 `V` 把 count 加一后才再回来继续执行
+The sequence of instructions between acquire and release is often called a critical section. The lock is said to be protecting list.
 
-尽管这样还不够完善，但这正是往前的第一步。 设想有一对名为 `sleep` 和 `wakeup` 的函数，其行为如下：`sleep(chan)` 会等待一个由 `chan` 的值所指定的事件，这个值被称为「等待通道（wait channel）」。 `sleep` 会让调用它的 process 进入睡眠状态，并释放 CPU 让其他工作可以执行。 `wakeup(chan)` 则会唤醒所有正在对相同 `chan` 调用 `sleep` 的 process（如果有的话），让那些 `sleep` 函数返回。 如果没有 process 正在等待该 `chan`，则 `wakeup` 不会有任何效果
+在 acquire 和 release 之间的指令序列通常被称为临界区（critical section）。我们称该锁正在保护 list。
 
-现在我们可以利用 `sleep` 与 `wakeup` 来修改 semaphore 的实现：
+When we say that a lock protects data, we really mean that the lock protects some collection of invariants that apply to the data. Invariants are properties of data structures that are maintained across operations. Typically, an operation’s correct behavior depends on the invariants being true when the operation begins. The operation may temporarily violate the invariants but must reestablish them before finishing. For example, in the linked list case, the invariant is that list points at the first element in the list and that each element’s next field points at the next element. The implementation of push violates this invariant temporarily: in line 17, 1 points to the next list element, but list does not point at 1 yet (reestablished at line 18 ). The race we examined above happened because a second CPU executed code that depended on the list invariants while they were (temporarily) violated. Proper use of a lock ensures that only one CPU at a time can operate on the data structure in the critical section, so that no CPU will execute a data structure operation when the data structure’s invariants do not hold.
 
-```c
-void
-V(struct semaphore *s)
-{
-   acquire(&s->lock);
-   s->count += 1;
-   wakeup(s);  // added line
-   release(&s->lock);
-}
+当我们说锁保护数据时，实际上是指锁保护了适用于该数据的一组不变性（invariants）。不变性是数据结构在跨操作维护时保持的属性。通常，一个操作的正确行为取决于操作开始时不变性是否成立。操作可能会暂时违反不变性，但必须在结束前重新建立它们。例如，在链表的情况下，不变性是 list 指向链表中的第一个元素，并且每个元素的 next 字段指向下一个元素。push 的实现暂时违反了这一不变性：在第 17 行，l 指向了下一个链表元素，但 list 尚未指向 l（在第 18 行重新建立）。我们之前检查的竞态条件之所以发生，是因为第二个 CPU 执行了依赖于链表不变性的代码，而此时这些不变性正处于（暂时的）被破坏状态。正确使用锁可以确保一次只有一个 CPU 能在临界区内操作数据结构，从而确保没有 CPU 会在数据结构的不变性不成立时执行数据结构操作。
 
-void
-P(struct semaphore *s)
-{
-  while(s->count == 0)
-    sleep(s);   // added line
-  acquire(&s->lock);
-  s->count -= 1;
-  release(&s->lock);
-}
-```
+You can think of a lock as serializing concurrent critical sections so that they run one at a time, and thus preserve invariants (assuming the critical sections are correct in isolation). You can also think of critical sections guarded by the same lock as being atomic with respect to each other, so that each sees only the complete set of changes from earlier critical sections, and never sees partially-completed updates.
 
-现在 `P` 不再自旋了，其会让出 CPU，这是个好改进。 不过要用这种接口正确实现 sleep 和 wakeup 并不容易，因为我们会遇到一种称为「唤醒遗失（lost wake-up）」的问题。 假设 `P` 在 `while(s->count == 0)` 处发现 `s->count == 0`，但就在 `P` 执行完第 13 行，准备执行第 14 行时，`V` 在另一个 CPU 上被执行了，此时 `V` 将 `s->count` 改为了非零值，并调用了 `wakeup`，但此时尚未有任何 process 在睡眠中，因此 `wakeup` 就没有做任何事
+你可以将锁看作是将并发的临界区串行化，使它们一次只运行一个，从而维持不变性（假设临界区在独立运行时是正确的）。你也可以将受同一把锁保护的临界区看作是相对于彼此原子的，这样每个临界区只能看到之前临界区所做的完整修改，而永远不会看到部分完成的更新。
 
-接著 `P` 继续执行到第 14 行，调用了 `sleep` 并进入了睡眠状态。 这就造成了一个问题：`P` 此时正在等待一个已经由 `V` 发完的 `wakeup` 调用。 除非我们运气很好，生产者再次调用了 `V`，否则消费者将会被永远卡住，即使 `count` 已经是非零值了
+Though useful for correctness, locks inherently limit performance. For example, if two processes call kfree concurrently, the locks will serialize the two critical sections, so that there is no benefit from running them on different CPUs. We say that multiple processes conflict if they want the same lock at the same time, or that the lock experiences contention. A major challenge in kernel design is avoidance of lock contention in pursuit of parallelism. Xv6 does little of that, but sophisticated kernels organize data structures and algorithms specifically to avoid lock contention. In the list example, a kernel may maintain a separate free list per CPU and only touch another CPU’s free list if the current CPU’s list is empty and it must steal memory from another CPU. Other use cases may require more complicated designs.
 
-这个问题的根源在于，一个重要的不变式被破坏了：`P` 只会在 `s->count == 0` 的时候才去 `sleep`。 但这个不变式在 `V` 刚好于错误时机执行时会被破坏。 有一种错误的解法，是试图通过把 `P` 里面获取 lock 的动作往前移，让 `count` 的检查与调用 `sleep` 的过程变成原子操作：
+虽然锁对正确性很有用，但它本质上限制了性能。例如，如果两个进程并发调用 kfree，锁将使这两个临界区串行化，因此在不同 CPU 上运行它们并无益处。如果多个进程同时想要同一把锁，我们称之为冲突，或者说该锁存在竞争（contention）。内核设计中的一个主要挑战是为了追求并行性而避免锁竞争。Xv6 在这方面做得很少，但复杂的内核会专门组织数据结构和算法来避免锁竞争。在链表的例子中，内核可以为每个 CPU 维护一个单独的空闲列表，只有当当前 CPU 的列表为空且必须从另一个 CPU 窃取内存时，才会触碰另一个 CPU 的空闲列表。其他用例可能需要更复杂的设计。
+
+The placement of locks is also important for performance. For example, it would be correct to move acquire earlier in push, before line 13. But this would likely reduce performance because then the calls to malloc would be serialized. The section “Using locks” below provides some guidelines for where to insert acquire and release invocations.
+
+锁的位置对性能也至关重要。例如，在 push 中将 acquire 提前到第 13 行之前也是正确的。但这可能会降低性能，因为这样对 malloc 的调用就会被串行化。下面的“使用锁”章节提供了一些关于在何处插入 acquire 和 release 调用的准则。
+
+## 7.2 Code: Locks
+
+Please read kernel/spinlock.h and kernel/spinlock.c.
+
+请阅读 kernel/spinlock.h 和 kernel/spinlock.c。
+
+Xv6 has two types of locks: spinlocks and sleep-locks. We’ll start with spinlocks. Xv6 represents a spinlock as a struct spinlock (1201). The important field in the structure is locked, a word that is zero when the lock is available and non-zero when it is held. Logically, xv6 should acquire a lock by executing code like
+
+Xv6 有两种类型的锁：自旋锁（spinlocks）和睡眠锁（sleep-locks）。我们先从自旋锁开始。Xv6 将自旋锁表示为 struct spinlock (1201)。该结构中重要的字段是 locked，这是一个字（word），当锁可用时为零，当锁被持有时为非零。从逻辑上讲，xv6 应该通过执行如下代码来获取锁：
 
 ```c
 void
-V(struct semaphore *s)
+acquire(struct spinlock *lk) // does not work!
 {
-  acquire(&s->lock);
-  s->count += 1;
-  wakeup(s);
-  release(&s->lock);
-}
-
-void
-P(struct semaphore *s)
-{
-  acquire(&s->lock);        // <--- 錯誤方式
-  while(s->count == 0)
-    sleep(s);
-  s->count -= 1;
-  release(&s->lock);
-}
-```
-
-我们希望这个版本的 `P` 能避免 lost wakeup，因为 lock 阻止了 `V` 在 `while(s->count == 0)` 与 `sleep(s)` 之间插入执行。 它确实做到了这点，但也同时导致了死锁：`P` 在进入 `sleep` 时仍持有 lock，导致 `V` 永远无法获取 lock 而被卡住
-
-我们将通过改变 `sleep` 的接口来修正先前的设计问题：调用者必须将「条件锁（condition lock）」传递给 `sleep`，让 `sleep` 可以在调用者被标记为睡眠，并在指定的 sleep channel 等待后释放该锁。 这把锁会强制让同时执行的 `V` 延后执行，直到 `P` 完成进入睡眠，这样 `wakeup` 才能正确找到处于睡眠状态的消费者并唤醒它。 一旦消费者再次被唤醒，`sleep` 会在返回前重新获取这把锁。 经过这种修正后的 sleep/wakeup 机制可以如下列方式使用：
-
-```c
-void
-V(struct semaphore *s)
-{
-  acquire(&s->lock);
-  s->count += 1;
-  wakeup(s);
-  release(&s->lock);
-}
-
-void
-P(struct semaphore *s)
-{
-  acquire(&s->lock);
-  while(s->count == 0)
-     sleep(s, &s->lock);  // <--- 改版後的 sleep 會接受一個 lock 引數
-  s->count -= 1;
-  release(&s->lock);
-}
-```
-
-`P` 在进入 `sleep` 前就已经持有了 `s->lock`，这使得 `V` 无法在 `P` 检查 `s->count` 和调用 `sleep` 之间插入并尝试唤醒 `P`。 然而，`sleep` 仍必须以「对 `wakeup` 来说是原子的方式」，同时释放 `s->lock` 并让消费者 process 进入睡眠状态，这样才能避免 lost wakeup 的问题
-
-## 7.6 Code: Sleep and wakeup
-
-xv6 的 `sleep`（[kernel/proc.c:548](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L548)）与 `wakeup`（[kernel/proc.c:579](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L579)）实现了前面范例中所提到的接口。 基本的做法是：`sleep` 会将目前的 process 标记为 `SLEEPING`，然后调用 `sched` 来释放 CPU； 而 `wakeup` 则会找出正在某个 wait channel 上睡眠的 process，并将其标记为 `RUNNABLE`。 `sleep` 和 `wakeup` 的调用者可以任意使用一个双方同意的数值作为 channel。 xv6 通常会用 kernel 相关的数据结构的地址来当作这个 channel
-
-```c
-// Sleep on wait channel chan, releasing condition lock lk.
-// Re-acquires lk when awakened.
-void
-sleep(void *chan, struct spinlock *lk)
-{
-  struct proc *p = myproc();
-  
-  // Must acquire p->lock in order to
-  // change p->state and then call sched.
-  // Once we hold p->lock, we can be
-  // guaranteed that we won't miss any wakeup
-  // (wakeup locks p->lock),
-  // so it's okay to release lk.
-
-  acquire(&p->lock);  //DOC: sleeplock1
-  release(lk);
-
-  // Go to sleep.
-  p->chan = chan;
-  p->state = SLEEPING;
-
-  sched();
-
-  // Tidy up.
-  p->chan = 0;
-
-  // Reacquire original lock.
-  release(&p->lock);
-  acquire(lk);
-}
-
-// Wake up all processes sleeping on wait channel chan.
-// Caller should hold the condition lock.
-void
-wakeup(void *chan)
-{
-  struct proc *p;
-
-  for(p = proc; p < &proc[NPROC]; p++) {
-    if(p != myproc()){
-      acquire(&p->lock);
-      if(p->state == SLEEPING && p->chan == chan) {
-        p->state = RUNNABLE;
-      }
-      release(&p->lock);
-    }
-  }
-}
-```
-
-`sleep` 会先获取 `p->lock`（[kernel/proc.c:559](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L559)），之后才释放 `lk`。 `sleep` 之所以会一直持有其中一把锁，是为了防止同时执行的 `wakeup`（它必须同时获取两把锁）在错误的时间介入。 此时 `sleep` 已持有 `p->lock`，因此可以通过纪录 sleep channel、将 process 状态设为 `SLEEPING`，再调用 `sched`（[kernel/proc.c:563-566](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L563-L566)）来让 process 进入睡眠。 稍后我们会看到，为何一定要等到 process 被标记为 `SLEEPING` 后，`p->lock` 才能被 scheduler 释放
-
-之后的某个时间点，某个 process 会获取条件锁、设置条件（也就是唤醒的前提），然后调用 `wakeup(chan)`。 这里的重点是：`wakeup` 调用时要持有这把条件锁（严格来说，只要 `wakeup` 紧跟在 `acquire` 之后就够了，也就是说可以在 `release` 之后调用 `wakeup`）。 `wakeup` 会遍历整张 process table（[kernel/proc.c:579](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L579)），并对每个被检查的 process 获取其 `p->lock`。 如果 `wakeup` 发现某个 process 处于 `SLEEPING` 状态，且它的 `chan` 与传进来的参数相符，就会将其状态改为 `RUNNABLE`。 接下来当 scheduler 执行时，就会注意到这个 process 已经可以被执行了
-
-`sleep` 和 `wakeup` 的锁定规则能保证一个 process 在进入睡眠时，不会错过同时发生的 `wakeup`。 这是因为要进入睡眠的 process，会在检查条件前就会持有条件锁与 `p->lock`，或两者的其中一个，直到被标记为 `SLEEPING` 之后才会释放它们。 而调用 `wakeup` 的 process 在其循环中会同时持有这两把锁。 因此，唤醒者要么会在消费者检查条件之前就改变条件，要么会在消费者已经标为 `SLEEPING` 后再执行 `wakeup`，这样就能看到睡眠中的 process 并成功唤醒它了（除非有其他事情先唤醒它）
-
-::: tip  
-> 直到被标记为 `SLEEPING` 之后才会释放它们
-
-这里是指 `p->lock` 在回到 scheduler context 时会由 `scheduler` 释放（`release(&p->lock)`）  
-:::
-
-有时会有多个 process 同时在同一个 channel 上睡眠，例如多个 process 同时对一个 pipe 进行读取，则只需一个 `wakeup` 就会把它们全部唤醒。 当中有一个 process 会先被执行，并成功获取 `sleep` 时用的锁，在 pipe 的情况下，它会读走等待中的数据。 其他 process 虽然也被唤醒，却会发现没有数据可读。 从它们的角度来看，这次唤醒是「虚假的（spurious）」，它们必须再次进入睡眠。 也因此，`sleep` 一定会包在一个会检查条件的循环中
-
-即使两个 sleep/wakeup 用户不小心选了相同的 channel，也不会造成什么问题：它们可能会遇到 spurious wakeup 的问题，但只要照上面所说的方式加上循环，就可以容忍这种情况。 sleep/wakeup 的设计魅力之一，就在于它既轻量（不需要额外创建用来表示 sleep channel 的特殊数据结构），又提供了一层间接性（调用者不需要知道自己在跟哪个特定的 process 交互）
-
-## 7.7 Code: Pipes
-
-xv6 中对 pipe 的实现是一个以 `sleep` 和 `wakeup` 同步 producer 与 consumer 的更复杂的例子。 我们在第一章中看过 pipe 的接口：写入 pipe 一端的 byte 会被复制进 kernel 内部的 buffer 中，之后可以从另一端读出。 后面的章节会探讨围绕 pipe 的 file descriptor 支持，但我们现在先来看 `pipewrite` 与 `piperead` 的实现
-
-每个 pipe 都用一个 `struct pipe` 来表示，其中包含一个 `lock` 和一个 `data` buffer。 `nread` 与 `nwrite` 这两个栏位分别记录从 buffer 中读出的总 byte 数与写入的总 byte 数。 这个 buffer 是环状的：在写入到 `buf[PIPESIZE-1]` 之后，下一个 byte 会被写入到 `buf[0]`。 但计数器 `nread` 和 `nwrite` 并不会像这样回绕
-
-这种设计让实现可以简单地区分 buffer 已满（`nwrite == nread + PIPESIZE`）与 buffer 为空（`nwrite == nread`）的状态，但也意味著对 buffer 的访问必须使用 `buf[nread % PIPESIZE]`，不能直接用 `buf[nread]`（对 `nwrite` 也是如此）
-
-假设此时有两个不同 CPU 同时分别调用 `piperead` 与 `pipewrite`。 `pipewrite`（[kernel/pipe.c:77](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L77)）会先获取 pipe 的锁，这把锁保护的是计数器、数据与相关的不变性。 此时 `piperead`（[kernel/pipe.c:106](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L106)）也会尝试获取这把锁，但这会失败，因此它会卡在 `acquire` 中（[kernel/spinlock.c:22](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/spinlock.c#L22)）自旋等待锁释放
-
-```c
-int
-pipewrite(struct pipe *pi, uint64 addr, int n)
-{
-  int i = 0;
-  struct proc *pr = myproc();
-
-  acquire(&pi->lock);
-  while(i < n){
-    if(pi->readopen == 0 || killed(pr)){
-      release(&pi->lock);
-      return -1;
-    }
-    if(pi->nwrite == pi->nread + PIPESIZE){ //DOC: pipewrite-full
-      wakeup(&pi->nread);
-      sleep(&pi->nwrite, &pi->lock);
-    } else {
-      char ch;
-      if(copyin(pr->pagetable, &ch, addr + i, 1) == -1)
-        break;
-      pi->data[pi->nwrite++ % PIPESIZE] = ch;
-      i++;
-    }
-  }
-  wakeup(&pi->nread);
-  release(&pi->lock);
-
-  return i;
-}
-
-int
-piperead(struct pipe *pi, uint64 addr, int n)
-{
-  int i;
-  struct proc *pr = myproc();
-  char ch;
-
-  acquire(&pi->lock);
-  while(pi->nread == pi->nwrite && pi->writeopen){  //DOC: pipe-empty
-    if(killed(pr)){
-      release(&pi->lock);
-      return -1;
-    }
-    sleep(&pi->nread, &pi->lock); //DOC: piperead-sleep
-  }
-  for(i = 0; i < n; i++){  //DOC: piperead-copy
-    if(pi->nread == pi->nwrite)
-      break;
-    ch = pi->data[pi->nread++ % PIPESIZE];
-    if(copyout(pr->pagetable, addr + i, &ch, 1) == -1)
-      break;
-  }
-  wakeup(&pi->nwrite);  //DOC: piperead-wakeup
-  release(&pi->lock);
-  return i;
-}
-```
-
-当 `piperead` 还在等待时，`pipewrite` 会在循环中逐一将 `addr[0..n-1]` 的数据写进 pipe（[kernel/pipe.c:95](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L95)）。 在这个过程中，可能会遇到 buffer 被填满的情况（[kernel/pipe.c:88](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L88)），此时 `pipewrite` 会调用 `wakeup` 去通知任何正在等待的 reader，表示 buffer 里有数据可读，然后自己对 `&pi->nwrite` 调用 `sleep`，等待某个 reader 从 buffer 中拿走一些 byte。 这个 `sleep` 在让 `pipewrite` 的 process 进入睡眠状态的会同时释放 `pipe` 的 `lock`
-
-此时 `piperead` 获取了 pipe 的 lock 并进入 critical section：它发现 `pi->nread != pi->nwrite`（[kernel/pipe.c:113](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L113)）（这代表之前 `pipewrite` 是因为 `pi->nwrite == pi->nread + PIPESIZE` 而进入 `sleep` 的，见 [kernel/pipe.c:88](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L88)），所以接著进入 for 循环，从 pipe 中复制数据出去（[kernel/pipe.c:120](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L120)），并根据复制的 byte 数增加 `nread`。 此时这些空出来的 byte 就又可供写入了，因此 `piperead` 会调用 `wakeup`（[kernel/pipe.c:127](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L127)）唤醒可能在等待的 writer。 wakeup 会找到那个在 `&pi->nwrite` 上睡眠的 process，也就是之前因为 buffer 满了而进入 sleep 的 `pipewrite` process，并将该 process 标记为 `RUNNABLE`
-
-pipe 的代码为 reader 和 writer 使用了不同的 sleep channel（分别为 `pi->nread` 与 `pi->nwrite`）； 这么做可能会让系统在有大量 reader 和 writer 同时等待同一条 pipe 的情况下更有效率。 pipe 的 sleep 都写在一个会检查条件的循环中； 如果有多个 reader 或 writer，其中第一个醒来的 process 会发现条件满足，而其他人会因为条件还不成立再次进入 sleep
-
-## 7.8 Code: Wait, exit, and kill
-
-`sleep` 和 `wakeup` 可以用在许多种类的等待情境中。 一个有趣的例子是在第一章中介绍的：child 的 `exit` 和 parent 的 `wait` 之间的交互。 在 child 终止时，parent 可能已经因 `wait` 而处于睡眠中，或是正在执行其他事情； 如果是后者，即使已经距离 `exit` 调用过了一段时间，之后调用 `wait` 时也必须能够观察到 child 的死亡
-
-xv6 采用的做法是让 `exit` 将调用者的状态设为 `ZOMBIE`，child 会保持在该状态，直到 parent 调用 `wait` 并察觉到它，接著将 child 的状态改成 `UNUSED`，复制其退出状态，并将其 process ID 返回给 parent。 如果 parent 在 child 之前先结束了，那么 parent 会把 child 移交给 `init` process，其会永久地调用 `wait`； 因此每个 child 都会有一个负责清理它的 parent。 实现上的挑战在于如何避免 parent 和 child 同时调用 `wait` 或 `exit`，或两个 process 同时调用 `exit` 时生成 race condition 或 deadlock
-
-```c
-// Exit the current process.  Does not return.
-// An exited process remains in the zombie state
-// until its parent calls wait().
-void
-exit(int status)
-{
-  struct proc *p = myproc();
-
-  if(p == initproc)
-    panic("init exiting");
-
-  // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
-      struct file *f = p->ofile[fd];
-      fileclose(f);
-      p->ofile[fd] = 0;
-    }
-  }
-
-  begin_op();
-  iput(p->cwd);
-  end_op();
-  p->cwd = 0;
-
-  acquire(&wait_lock);
-
-  // Give any children to init.
-  reparent(p);
-
-  // Parent might be sleeping in wait().
-  wakeup(p->parent);
-  
-  acquire(&p->lock);
-
-  p->xstate = status;
-  p->state = ZOMBIE;
-
-  release(&wait_lock);
-
-  // Jump into the scheduler, never to return.
-  sched();
-  panic("zombie exit");
-}
-```
-
-`wait` 会先获取 `wait_lock`（[kernel/proc.c:391](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L391)），这把锁扮演著条件锁的角色，用来确保 `wait` 不会错过 child `exit` 所发出的 `wakeup`。 接著 `wait` 会扫描整张 process table，如果找到一个状态为 `ZOMBIE` 的 child，它会释放该 child 的资源和其 `proc` 结构，并将其 exit status 复制到 `wait` 所提供的指针中（如果该指针不是 0），然后返回该 child 的 process ID
-
-如果 `wait` 找到一些 child，但都还没 `exit`，它就会调用 `sleep` 来等待其中任何一个结束（[kernel/proc.c:433](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L433)），然后再次扫描。 `wait` 经常同时持有两把锁：`wait_lock` 和某个 child 的 `pp->lock`。 为了避免 deadlock，持锁的顺序必须是先取 `wait_lock` 再取 `pp->lock`
-
-```c
-// Wait for a child process to exit and return its pid.
-// Return -1 if this process has no children.
-int
-wait(uint64 addr)
-{
-  struct proc *pp;
-  int havekids, pid;
-  struct proc *p = myproc();
-
-  acquire(&wait_lock);
-
-  for(;;){
-    // Scan through table looking for exited children.
-    havekids = 0;
-    for(pp = proc; pp < &proc[NPROC]; pp++){
-      if(pp->parent == p){
-        // make sure the child isn't still in exit() or swtch().
-        acquire(&pp->lock);
-
-        havekids = 1;
-        if(pp->state == ZOMBIE){
-          // Found one.
-          pid = pp->pid;
-          if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                  sizeof(pp->xstate)) < 0) {
-            release(&pp->lock);
-            release(&wait_lock);
-            return -1;
-          }
-          freeproc(pp);
-          release(&pp->lock);
-          release(&wait_lock);
-          return pid;
+    for(;;) {
+        if(lk->locked == 0) {
+            lk->locked = 1;
+            break;
         }
-        release(&pp->lock);
-      }
     }
-
-    // No point waiting if we don't have any children.
-    if(!havekids || killed(p)){
-      release(&wait_lock);
-      return -1;
-    }
-    
-    // Wait for a child to exit.
-    sleep(p, &wait_lock);  //DOC: wait-sleep
-  }
 }
 ```
 
-`exit`（[kernel/proc.c:347](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L347)）会记录退出状态、释放部分资源、调用 `reparent` 将自己的 child 移交给 `init` process、唤醒可能正在 `wait` 的 parent、将自己标记为 zombie，并永久让出 CPU。 `exit` 在这段过程中会同时持有 `wait_lock` 和 `p->lock`。 持有 `wait_lock` 是为了确保唤醒 parent（`wakeup(p->parent)`）时不会遗失 wakeup（因为这是条件锁）。 它也必须持有 `p->lock`，以避免在 child 尚未完成 `swtch` 之前，parent 在 `wait` 中看到 child 处于 `ZOMBIE` 状态。 `exit` 持锁的顺序与 `wait` 相同，以避免 deadlock
+Unfortunately, this implementation does not guarantee mutual exclusion on a multiprocessor. It could happen that two CPUs simultaneously reach line 25, see that is zero, and then both grab the lock by executing line 26. At this point, two different CPUs hold the lock, which violates the mutual exclusion property. What we need is a way to make lines 25 and 26 execute as an atomic (i.e., indivisible) step.
 
-`exit` 在将自己的状态设为 `ZOMBIE` 之前就唤醒 parent，看起来好像不太正确，但这其实是安全的：虽然 `wakeup` 可能会让 parent 被调度执行，但 `wait` 中的循环在 child 的 `p->lock` 被 scheduler 释放之前，无法访问该 child，因此 `wait` 不会太早看到该 process，直到 `exit` 把状态设为 `ZOMBIE` 为止（[kernel/proc.c:379](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L379)）
+不幸的是，这种实现在多处理器上不能保证互斥。可能会出现两个 CPU 同时到达第 25 行，看到 为零，然后都通过执行第 26 行来获取锁。此时，两个不同的 CPU 都持有该锁，这违反了互斥属性。我们需要的是一种让第 25 行和第 26 行作为原子（即不可分割）步骤执行的方法。
 
-`exit` 允许一个 process 终止自己，而 `kill`（[kernel/proc.c:598](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L598)）则允许某个 process 请求终止另一个 process。 让 `kill` 直接销毁目标 process 会太过复杂，因为该目标可能正在另一个 CPU 上执行，甚至可能正处于对 kernel 数据结构进行敏感更新的途中。 因此 `kill` 所做的事情非常简单：它只会设置目标 process 的 `p->killed`，如果该 process 正在睡眠状态，也会唤醒它
+Because locks are widely used, multi-core processors usually provide an instruction that can be used to make lines 25 and 26 atomic. On the RISC-V this instruction is amoswap r, a. amoswap reads the value at the memory address , writes the contents of register to that address, and puts the value it read into r. That is, it swaps the contents of the register and the addressed memory location. It performs this sequence atomically, using special hardware to prevent any other CPU from using the memory address between the read and the write.
 
-最终这个被 `kill` 的 process 会进入或离开 kernel，而在那个时间点，`usertrap` 中的代码会检查 `p->killed` 是否有被设置（它通过调用 `killed` 来检查，见 [kernel/proc.c:627](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/proc.c#L627)），如果有被设置就调用 `exit`。 如果该 process 当时正执行在 user space，它很快就会因为系统调用或 timer（或其他装置）的中断而进入 kernel
+由于锁被广泛使用，多核处理器通常会提供一条指令，用于使第 25 行和第 26 行成为原子操作。在 RISC-V 上，这条指令是 amoswap r, a。amoswap 读取内存地址 处的值，将寄存器 的内容写入该地址，并将读取到的值存入 r。也就是说，它交换了寄存器和指定内存位置的内容。它利用特殊的硬件来防止任何其他 CPU 在读取和写入之间使用该内存地址，从而原子地执行这一序列。
 
-::: tip  
-`kill` 并不会马上让目标 process 终止，因为 process 可能正在 user space 执行，甚至可能正在别的 CPU 上处理一些尚未完成的 kernel 操作。 为了避免 race condition 或破坏 kernel 的一致性，xv6 的做法是设一个 `p->killed` flag，然后等待目标 process 自己进入 kernel（可能是被中断打断或做系统调用），再由 `usertrap` 判断是否要执行 `exit`。 使用的是延迟中止的设计  
-:::
+The portable C library call __sync_lock_test_and_set (addr, value) boils down to the amoswap instruction; the function returns the old (swapped) contents of *addr. Here’s a good way to write the loop in acquire:
 
-如果目标 process 此时正在 `sleep`，那么 `kill` 调用 `wakeup` 就会让它从 `sleep` 返回。 这其实是有潜在风险的，因为原本等待的条件可能仍然不成立。 不过，在 xv6 里，所有对 `sleep` 的调用都包在一个 while 循环中，`sleep` 返回之后会重新检查条件。 有些 `sleep` 的调用还会在循环中检查 `p->killed`，如果发现它被设置了，就会放弃目前的行为。 这只有在放弃当前操作是合理的情况下才会这样做，例如 pipe 的读写代码（[kernel/pipe.c:84](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/pipe.c#L84)）就会在 `killed` 被设置时直接返回； 之后程序流程会回到 trap，那里会再一次检查 `p->killed`，然后执行 `exit`
+可移植的 C 库调用 `__sync_lock_test_and_set (addr, value)` 最终会归结为 `amoswap` 指令；该函数返回 `*addr` 旧的（被交换出的）内容。以下是编写 `acquire` 中循环的一种好方法：
 
-有些 xv6 中的 `sleep` 循环并不会检查 `p->killed`，因为这些代码正处于一个原子性的 multi-step system call 中。 virtio driver 就是一个例子（[kernel/virtio_disk.c:285](https://github.com/mit-pdos/xv6-riscv/blob/riscv//kernel/virtio_disk.c#L285)）：它不会检查 `p->killed`，因为单个 disk 操作可能是数个写入中的其中一部分，而这些写入全部完成后，文件系统的状态才会是正确的。 如果一个 process 在等待 disk I/O 的期间被 kill，它仍然会完成目前的系统调用，等回到 `usertrap` 时才会检查 `killed` flag 并结束
+```c
+while(__sync_lock_test_and_set(&lk->locked, 1)!= 0)
+    ;
+```
 
-## 7.9 Process Locking
+Xv6’s acquire (1271) uses the above loop. Each iteration swaps one into and checks the previous value; if the previous value is zero, then we’ve acquired the lock, and the swap will have set locked to one. If the previous value is one, then some other CPU holds the lock, and the fact that we atomically swapped one into didn’t change its value.
 
-每个 process 所对应的 lock（`p->lock`）是 xv6 中最复杂的 lock。 要理解 `p->lock`，一个简单的方式是：只要要读取或写入下列 `struct proc` 栏位时，就必须持有这把 lock：`p->state`、`p->chan`、`p->killed`、`p->xstate`，以及 `p->pid`。 这些栏位可能会被其他 process 或其他 CPU 上的 scheduler 线程访问，因此需要用 lock 来保护
+Xv6 的 `acquire` (1271) 使用了上述循环。每次迭代都将 1 交换到 中并检查之前的值；如果之前的值为零，那么我们就获得了锁，并且交换操作已将 设置为 1。如果之前的值为 1，则说明其他某个 CPU 持有该锁，而我们原子性地将 1 交换到 中的事实并未改变其值。
 
-然而，`p->lock` 的大多数用途其实是在保护 xv6 中 process 数据结构与演算法的更高层次面向。 以下列出 `p->lock` 所负责的全部事项：
+Once the lock is acquired, acquire records, for debugging, the CPU that acquired the lock. The field is protected by the lock and must only be changed while holding the lock.
 
-- 与 `p->state` 一起，它可以防止在分配 `proc[]` 中的新 process slot 时发生竞争条件
-  - `proc[]` 是全系统的 process 表，而创建新 process 时需要找一个 `UNUSED` slot。 若没有锁，可能两个 CPU 同时选中一个 slot。 持有 `p->lock` 可让检查 `state == UNUSED` 和后续设置变成原子操作
-- 在 process 被创建或销毁的过程中，它能让该 process 对外「不可见」
-  - 一个 process 尚未完成初始化，或还没清除完内存前，不应被其他人查询或操作。 持有 `p->lock` 可避免其他人看到尚未准备好或已经部分销毁的 process 状态
-- 它可以防止 parent 的 `wait` 在 child 将状态设为 `ZOMBIE` 但还没释出 CPU 前，就过早回收该 process
-- 它可以防止其他 CPU 的 scheduler 在一个 process 将状态设成 `RUNNABLE` 但尚未完成 `swtch` 前，就决定要执行它
-  - 从 `RUNNING` 切换出去时状态会被改为 `RUNNABLE`，但此时还没完成 context switch。 如果其他 scheduler 此时看到 `RUNNABLE` 而选它，会生成不一致
-- 它能保证只有一个 CPU 的 scheduler 决定要执行某个 `RUNNABLE` 的 process
-  - 防止两个 scheduler 同时选中同一个 process
-- 它防止 timer interrupt 在 process 正在 `swtch` 时让它再次 `yield`
-  - 如果在切换 context 的过程中又被中断，可能会造成 process 被不当地 preempt。 这段说明 `p->lock` 是让 `swtch` 对 timer interrupt 保持原子性的手段之一
-- 配合条件变量所用的 lock，它可以防止 `wakeup` 漏掉正在调用 `sleep` 但还没完成 `yield` 的 process
-- 它防止在 `kill` 检查 `p->pid` 与设置 `p->killed` 之间，该目标 process 就已经 exit 并被重复使用
-  - `pid` 是唯一识别 process 的 ID，但 `proc[]` slot 是会被重用的。 如果在 `kill` 检查 `pid` 后、设置 `killed` 前，该 slot 被别的 process 占用了，可能会 kill 错人
-- 它让 `kill` 对 `p->state` 的读写成为一个原子操作
-  - 不只是 `pid`，对 `state` 的操作也要是安全的。 否则 `kill` 可能对一个不该 kill 的状态进行操作
+一旦获得锁，`acquire` 会记录获取锁的 CPU 以供调试。 字段受锁保护，并且只能在持有锁时进行更改。
 
-`p->parent` 栏位则由全域的 `wait_lock` 保护，而不是由 `p->lock` 保护。 只有 process 的 parent 会修改 `p->parent`，但该栏位也会被这个 process 本身以及其他想找它子 process 的 process 所读取。 `wait_lock` 的用途是当 `wait` 调用进入 sleep、等待某个 child 终止时，充当条件用的 lock。 一个正在结束的 child 会持有 `wait_lock` 或 `p->lock`，直到它将自己的状态设为 `ZOMBIE`，唤醒 parent，并释出 CPU 为止
+The function release (1302) is the opposite of acquire: it clears the field and then releases the lock. Conceptually, the release just requires assigning zero to . The C standard allows compilers to implement an assignment with multiple store instructions, so a C assignment might be non-atomic with respect to concurrent code. Instead, release uses the C library function __sync_lock_release that performs an atomic assignment. This function also boils down to a RISC-V amoswap instruction.
 
-`wait_lock` 也会序列化 parent 与 child 同时调用 `exit` 的情况，这样 `init` process（它会继承该 child）就能保证会从 `wait` 中被唤醒。 `wait_lock` 是一把全域的锁，而不是每个 parent 都有一把，因为在 process 拿到它之前，它可能还不知道谁是它的 parent
+函数 `release` (1302) 与 `acquire` 相反：它清除 字段，然后释放锁。从概念上讲，`release` 只需要将零赋值给 。C 标准允许编译器使用多条存储指令来实现赋值，因此对于并发代码，C 赋值语句可能是非原子的。相反，`release` 使用 C 库函数 `__sync_lock_release` 来执行原子赋值。该函数同样归结为一条 RISC-V 的 `amoswap` 指令。
 
-## 7.10 Real world
+## 7.3 Code: Using locks
 
-xv6 的 scheduler 采用一种简单的调度策略：轮流执行每个 process，这种策略被称为轮转（round robin）。 而实际的操作系统会实现更复杂的策略，例如允许 process 拥有优先级。 这样一来，scheduler 会倾向选择可执行的高优先级 process，而不是低优先级的 process。 不过，这类策略通常很快就会变得复杂，因为操作系统往往同时还想达成其他目标，例如公平性与高吞吐量
+Xv6 uses locks in many places to avoid races. As described above, kalloc (3027) and kfree (3005) form a good example. Try Exercises 1 and 2 to see what happens if those functions omit the locks. You’ll likely find that it’s difficult to trigger incorrect behavior, suggesting that it’s hard to reliably test whether code is free from locking errors and races. Xv6 may well have as-yetundiscovered races.
 
-此外，复杂的调度策略还可能导致一些非预期的交互问题，例如优先级反转（priority inversion）与护航效应（convoys）。 优先级反转会发生在高优先级与低优先级的 process 同时使用某个 lock，而这个 lock 被低优先级的 process 持有时，就会阻止高优先级的 process 前进。 若有很多高优先级的 process 在等待同一个低优先级的 process 释出共享的 lock，就可能形成长串的等待队列（convoy）； 一旦这样的 convoy 形成，可能会持续很长一段时间，导致效能下降。 为了避免这些问题，更精密的 scheduler 必须加入额外机制
+Xv6 在许多地方使用锁来避免竞争。如上所述，kalloc (3027) 和 kfree (3005) 就是很好的例子。尝试练习 1 和 2，看看如果这些函数省略了锁会发生什么。你可能会发现很难触发错误行为，这表明要可靠地测试代码是否存在锁定错误和竞争是很困难的。Xv6 很可能还存在尚未发现的竞争。
 
-`sleep` 与 `wakeup` 是一种简单而有效的同步方法，但还有很多其他同步方式。 这些方法的首要挑战是避免本章开头所提到的「lost wakeups」问题。 早期的 Unix kernel 的 `sleep` 做法是直接关闭中断，这在当时单核的系统上是足够的。 但因为 xv6 是多核系统，它对 `sleep` 加入了额外的 lock
+A hard part about using locks is deciding how many locks to use and which data and invariants each lock should protect. There are a few basic principles. First, any time a variable can be written by one CPU at the same time that another CPU can read or write it, a lock should be used to keep the two operations from overlapping. Second, remember that locks protect invariants: if an invariant involves multiple memory locations, typically all of them need to be protected by a single lock to ensure the invariant is maintained.
 
-FreeBSD 的 `msleep` 采取了相同的做法。 Plan 9 的 `sleep` 则是使用一个 callback function，在进入 sleep 前、持有 scheduler 的 lock 时执行该函数，以作为最后一次检查 sleep 条件，来避免 lost wakeup。 Linux kernel 的 `sleep` 使用一个明确的 process queue，称为 wait queue，来取代 wait channel； 这个 queue 自身有其内部的 lock
+使用锁的一个难点在于决定使用多少个锁，以及每个锁应该保护哪些数据和不变性（invariants）。这里有几个基本原则。首先，任何时候当一个变量可能被一个 CPU 写入，而另一个 CPU 同时可能读取或写入它时，都应该使用锁来防止这两个操作重叠。其次，记住锁保护的是不变性：如果一个不变性涉及多个内存位置，通常需要用同一个锁保护所有这些位置，以确保维持该不变性。
 
-在 `wakeup` 中扫描整个 process 集合是一种低效率的做法。 更好的做法是把 `sleep` 和 `wakeup` 中的 `chan` 换成一种数据结构，这个数据结构能保存所有在该条件上等待的 process，例如 Linux 使用的 wait queue。 Plan 9 的 `sleep` 与 `wakeup` 将这个结构称为 rendezvous point。 许多 thread library 把同样的东西称为 condition variable； 在这种情况下，`sleep` 与 `wakeup` 的操作分别被称为 `wait` 与 `signal`。 所有这些机制的内核原则是一样的：sleep 的条件会受到某种 lock 保护，并且这个 lock 会在 sleep 的同时被原子性地释放
+The rules above say when locks are necessary but say nothing about when locks are unnecessary, and it is important for efficiency not to lock too much, because locks reduce parallelism. If parallelism isn’t important, then one could arrange to have only a single thread and not worry about locks. A simple kernel can do this on a multiprocessor by having a single lock; the kernel acquires the lock every time the kernel is entered from user space, for a system call or interrupt; the kernel releases the lock when it returns to user space. Many uniprocessor operating systems have been converted to run on multiprocessors using this approach, sometimes called a “big kernel lock,” but the approach sacrifices parallelism: only one CPU can execute in the kernel at a time. If the kernel consumes significant CPU time, more parallelism could be obtained by protecting different objects or modules with different locks, so that different CPUs could be executing in different parts of the kernel at the same time.
 
-`wakeup` 的实现会唤醒所有在特定 channel 上等待的 process，而在某些情况下，可能有很多 process 都在等同一个 channel。 操作系统会将这些 process 全部排入调度队列，然后它们会竞争去检查 sleep 条件。 这种情况下的 process 行为有时被称为「雷群效应（thundering herd）」，应该尽量避免这种情况发生。 大多数的 condition variable 提供两个 `wakeup` 相关的操作：`signal`（唤醒一个 process）以及 `broadcast`（唤醒所有等待中的 process）
+上述规则说明了何时必须加锁，但没有说明何时不需要加锁。为了效率，不过度加锁是很重要的，因为锁会降低并行性。如果并行性不重要，那么可以安排只使用单个线程，而不必担心锁的问题。一个简单的内核可以通过设置单个锁在多处理器上实现这一点：每当内核从用户空间进入（为了系统调用或中断）时，内核都会获取该锁；当它返回用户空间时，内核释放该锁。许多单处理器操作系统已通过这种方法（有时称为“大内核锁”，big kernel lock）转换为在多处理器上运行，但这种方法牺牲了并行性：一次只能有一个 CPU 在内核中执行。如果内核消耗了大量的 CPU 时间，可以通过使用不同的锁保护不同的对象或模块来获得更高的并行性，从而使不同的 CPU 可以同时在内核的不同部分执行。
 
-semaphore 也经常被用来做同步。它的计数器通常代表像是 pipe buffer 中可用的 byte 数，或是某个 process 拥有的 zombie child 数量。 semaphore 将这个计数值纳入抽象的一部分，可以避免「lost wakeup」的问题：因为 wakeup 的次数是有明确计数的。 此外，这个计数也能避免虚假唤醒（spurious wakeup）与雷群效应（thundering herd）的问题
+As an example of coarse-grained locking, xv6’s kalloc.c allocator has a single free list protected by a single lock. If multiple processes on different CPUs try to allocate pages at the same time, each will have to wait for its turn by spinning in acquire. Spinning wastes CPU time, since it’s not useful work. If contention for the lock wasted a significant fraction of CPU time, perhaps performance could be improved by changing the allocator to have a separate free list per CPU, each with its own lock, to allow truly parallel allocation.
 
-在 xv6 中终止 process 并清理其资源会引入相当多的复杂性。 在大多数操作系统中，这件事甚至更加复杂，因为被终止的 process 可能在 kernel 里处于深层的 sleep 状态，而要将它的 call stack 卸除时必须非常小心，因为 call stack 上的每个函数可能都需要做一些清理工作。 有些程序语言提供例外处理机制来协助这类清理，但 C 语言没有
+作为粗粒度锁的一个例子，xv6 的 kalloc.c 分配器拥有一个由单个锁保护的空闲列表。如果不同 CPU 上的多个进程尝试同时分配页面，每个进程都必须通过在 acquire 中自旋来轮流等待。自旋会浪费 CPU 时间，因为它不是有效的工作。如果对锁的争用浪费了大量的 CPU 时间，或许可以通过修改分配器，使其为每个 CPU 提供独立的空闲列表（每个列表都有自己的锁），从而允许真正的并行分配，以此来提高性能。
 
-此外，还有其他事件可能会导致一个正在 sleep 的 process 被唤醒，即使它等待的事件尚未发生。 例如，在 Unix 中，如果一个 process 处于 sleep 状态，其他 process 可以向它送出 `signal`。 在这种情况下，该 process 会从被中断的系统调用返回，并返回 -1，同时将错误码设为 `EINTR`。 应用程序可以根据这些值来决定后续处理方式。 而 xv6 不支持 signal，因此不会遇到这类复杂性
+As an example of fine-grained locking, has a separate lock for each file, so that processes that manipulate different files can often proceed without waiting for each other’s locks. The file locking scheme could be made even more fine-grained if one wanted to allow processes to simultaneously write different areas of the same file. Ultimately lock granularity decisions need to be driven by performance measurements as well as complexity considerations.
 
-xv6 中对于 `kill` 的支持并不完全令人满意：有些 sleep loop 应该要检查 `p->killed` 却没有检查。 另一个相关的问题是，即便某些 sleep loop 会检查 `p->killed`，仍然会遇到 `sleep` 与 `kill` 之间的竞争条件：`kill` 可能会在 victim 的 loop 检查完 `p->killed`，但尚未调用 `sleep` 之前设下 `p->killed` 并试图唤醒 victim。 如果发生这种情况，victim 将无法察觉 `p->killed`，直到它所等待的条件真的发生。 这可能会是很久以后，甚至永远不会发生（例如如果 victim 在等待来自 console 的输入，而用户没有打字）
+作为细粒度锁的一个例子， 为每个文件都设置了独立的锁，这样操作不同文件的进程通常可以运行而无需互相等待锁。如果想要允许进程同时写入同一文件的不同区域，文件锁定方案甚至可以做得更加细粒度。最终，锁粒度的决策需要由性能测量以及复杂性考量来驱动。
 
-::: tip  
-`kill` 会设置 `p->killed` 并叫醒 process，但如果 process 刚好检查过 `p->killed` 但还没真的去 sleep，那么它会 miss 掉这个信号。 结果就是 process 还是 sleep 了，等不到唤醒，直到条件真的成立才醒来，这可能永远不会发生（如等待输入）
+As subsequent chapters explain each part of xv6, they will mention examples of xv6’s use of locks to deal with concurrency. As a preview, Figure 7.3 lists all of the locks in xv6.
 
-这是一个经典的 race，解法通常是将检查条件与睡眠动作做成「原子操作」。 在 xv6 中 `sleep` 实现是：调用者先持有某个 lock，然后 `sleep` 把它加入 `chan` 的等待队列后释放 lock 并切换 context，但这中间还是会有空窗期  
-:::
+随着后续章节对 xv6 各个部分的讲解，将会提到 xv6 使用锁来处理并发的示例。作为预览，图 7.3 列出了 xv6 中的所有锁。
 
-一个真正的操作系统会使用明确的 free list 来在常数时间内找到空的 `proc` 结构，而不是像 xv6 那样在 `allocproc` 里用线性搜索的方式； xv6 采用线性搜索是为了简化设计
+| Lock | Description |
+| bcache.lock | Protects allocation of block buffer cache entries |
+| cons.lock | Serializes read processing of console input |
+| tx_lock | Serializes access to console (uart) output hardware |
+| ftable.lock | Serializes allocation of a struct file in file table |
+| itable.lock | Protects allocation of in-memory inode entries |
+| vdisk_lock | Serializes access to disk hardware and queue of DMA descriptors |
+| kmem.lock | Serializes allocation of memory |
+| log.lock | Serializes operations on the transaction log |
+| pipe's pi->lock | Serializes operations on each pipe |
+| pid_lock | Serializes increments of next_pid |
+| proc's p->lock | Serializes changes to process's state |
+| wait_lock | Helps wait avoid lost wakeups |
+| tickslock | Serializes operations on the ticks counter |
+| inode's ip->lock | Serializes operations on each inode and its content |
+| buf's b->lock | Serializes operations on each block buffer |
 
-## 7.11 Exercises
+## 7.4 Deadlock and lock ordering
 
-1. 在不使用 `sleep` 与 `wakeup` 的前提下，在 xv6 中实现 `semaphore`（可以使用 spin lock）。 挑选几个使用 `sleep` 与 `wakeup` 的地方，改用 semaphore 取代。并评估这样做的结果
-2. 修正前面提到的 `kill` 与 `sleep` 之间的竞争问题，使得当 `kill` 发生在 victim 的 sleep loop 已经检查过 `p->killed` 但尚未调用 `sleep` 之间时，victim 仍能放弃目前的系统调用
-3. 设计一个机制，让所有 sleep loop 都会检查 `p->killed`。 例如，让在 virtio driver 中的 process 被其他 process `kill` 时，能够快速跳出 while loop
-4. 修改 xv6，使从一个 process 的 kernel thread 切换到另一个时，只需要一次 context switch，而不是通过 scheduler thread。 使让出 CPU 的 thread 自行选出下一个要执行的 thread 并调用 `swtch`。 挑战包括避免多颗 CPU 同时执行同一个 thread、处理锁的正确性，以及避免 deadlock
-5. 修改 xv6 的 `scheduler`，当没有任何 process 可执行时，使用 RISC-V 的 `WFI`（wait for interrupt）指令。 尝试确保只要还有 process 处于 runnable 状态，就不会有 CPU 还在执行 `WFI`
+Suppose the functions running on CPUs C1 and C2 both have a point at which each needs to hold both lock A and lock B, and they acquire them in different orders:
+
+假设在 CPU C1 和 C2 上运行的函数都需要同时持有锁 A 和锁 B，且它们以不同的顺序获取锁：
+
+CPU C1
+
+```c
+acquire(&A);
+acquire(&B);
+...
+release(&B);
+release(&A);
+```
+
+CPU C2
+
+```c
+acquire(&B);
+acquire(&A);
+...
+release(&A);
+release(&B);
+```
+
+With a bit of bad luck, C1 and C2 might both execute their first acquire at exactly the same moment; both can succeed, since they are asking for different locks. But then both C 1 and C 2 will have to wait in their second calls to acquire(), since both locks are already held by the other CPU. Because both CPUs are waiting for each other, neither will ever release a lock, and both will wait forever. This situation is called deadlock.
+
+如果运气不佳，C1 和 C2 可能会在完全相同的时刻执行它们的第一个 acquire；由于它们请求的是不同的锁，两者都能成功。但随后，C1 和 C2 在第二次调用 acquire() 时都必须等待，因为这两个锁都已被另一个 CPU 持有。由于两个 CPU 都在互相等待，谁也不会释放锁，两者都将永远等待下去。这种情况被称为死锁。
+
+The key problem in the C1/C2 example is that the two CPUs acquired the locks in different orders. If they had both tried to acquire A first, one would have acquired A and then B and then released them both, and then the other CPU could have proceeded. More generally, locking code must follow this rule to avoid deadlock: all code paths that hold multiple locks must acquire locks in the same order. The need for this global lock acquisition order means that locks are effectively part of each function’s specification: callers must invoke functions in a way that causes locks to be acquired in the agreed-on order.
+
+C1/C2 示例中的关键问题在于两个 CPU 以不同的顺序获取锁。如果它们都尝试先获取 A，那么其中一个会先获取 A 然后获取 B，接着释放两者，之后另一个 CPU 就可以继续进行。更广泛地说，为了避免死锁，加锁代码必须遵循这条规则：所有持有多个锁的代码路径必须以相同的顺序获取锁。这种对全局锁获取顺序的需求意味着，锁实际上成为了每个函数规范的一部分：调用者必须以约定的顺序触发锁的获取。
+
+Xv6 has many lock-order chains of length two involving per-process locks (the lock in each struct proc) due to the way that sleep works (see Chapter 9). For example, consoleintr (7107) is the interrupt routine which handles typed characters. When a newline arrives, any process that is waiting for console input should be woken up. To do this, consoleintr holds cons.lock while calling wakeup, which acquires the waiting process’s lock in order to wake it up. In consequence, the global deadlock-avoiding lock order includes the rule that cons.lock must be acquired before any process lock. The file-system code contains xv6’s longest lock chains. For example, creating a file requires simultaneously holding a lock on the directory, a lock on the new file’s inode, a lock on a disk block buffer, the disk driver’s vdisk_lock, and the calling process’s p->lock. To avoid deadlock, file-system code always acquires locks in the order mentioned in the previous sentence.
+
+由于 sleep 的工作机制（见第 9 章），xv6 中有许多涉及进程锁（每个 struct proc 中的锁）的长度为 2 的锁顺序链。例如，consoleintr (7107) 是处理键入字符的中断例程。当换行符到达时，任何正在等待控制台输入的进程都应该被唤醒。为此，consoleintr 在调用 wakeup 时持有 cons.lock，而 wakeup 会获取等待进程的锁以唤醒它。因此，全局避免死锁的锁顺序包括这样一条规则：必须在获取任何进程锁之前获取 cons.lock。文件系统代码包含 xv6 中最长的锁链。例如，创建一个文件需要同时持有目录的锁、新文件 inode 的锁、磁盘块缓冲区的锁、磁盘驱动器的 vdisk_lock 以及调用进程的 p->lock。为了避免死锁，文件系统代码总是按照前述顺序获取锁。
+
+Honoring a global deadlock-avoiding order can be surprisingly difficult. Sometimes the lock order conflicts with logical program structure, e.g., perhaps code module M1 calls module M2, but the lock order requires that a lock in M2 be acquired before a lock in M1. Sometimes the identities of locks aren’t known in advance, perhaps because one lock must be held in order to discover the identity of the lock to be acquired next. This kind of situation arises in the file system as it looks up successive components in a path name, and in the code for the wait and exit system calls as they search the table of processes looking for child processes. Finally, the danger of deadlock is often a constraint on how fine-grained one can make a locking scheme, since more locks often means more opportunity for deadlock. The need to avoid deadlock is often a major factor in kernel implementation.
+
+遵守全局避免死锁的顺序可能出人意料地困难。有时锁顺序与逻辑程序结构相冲突，例如，代码模块 M1 调用模块 M2，但锁顺序要求在获取 M1 的锁之前先获取 M2 的锁。有时锁的身份无法预先得知，可能是因为必须持有一个锁才能发现下一个要获取的锁的身份。这种情况出现在文件系统查找路径名中的连续组件时，也出现在 wait 和 exit 系统调用搜索进程表寻找子进程的代码中。最后，死锁的危险通常是对细粒度锁方案的一种约束，因为更多的锁往往意味着更多的死锁机会。避免死锁的需求往往是内核实现中的一个主要因素。
+
+A question that sometimes arises is what should happen if a CPU tries to acquire a lock that the same CPU already holds. One line of reasoning is that this should be allowed: no other CPU can hold the lock, so there’s no need to worry about CPUs interfering with each others’ use of the protected data. Locking systems that allow a CPU to re-aquire a lock it alread holds are called a re-entrant or recursive. On the other hand, if a lock is already held, even on the same CPU, that means an operation may have temporarily violated and not yet restored some invariants; to allow a new operation to commence while the invariants don’t hold seems like an invitation to bugs. Xv6 takes this latter view, and forbids a CPU that currently holds a lock from re-acquiring it. Detecting this situation is the purpose of the call to holding in acquire.
+
+有时会产生这样一个疑问：如果一个 CPU 尝试获取它已经持有的锁，应该发生什么？一种观点认为这应该是允许的：因为没有其他 CPU 持有该锁，所以无需担心 CPU 之间在访问受保护数据时产生干扰。允许 CPU 重新获取其已持有锁的锁定系统被称为“可重入锁”或“递归锁”。另一方面，如果一个锁已被持有，即使是在同一个 CPU 上，也意味着某个操作可能暂时破坏了某些不变性（invariants）且尚未恢复；在不变性不成立时允许开始新操作，似乎是在诱发 Bug。Xv6 采取了后一种观点，禁止当前持有锁的 CPU 重新获取该锁。在 `acquire` 中调用 `holding` 的目的就是为了检测这种情况。
+
+## 7.5 Locks and interrupts
+
+Some xv6 spinlocks protect data that is used by both threads and interrupt handlers. For example, the clockintr timer interrupt handler might increment ticks (3482) at about the same time that a kernel thread reads ticks in sys_pause (3836). The lock tickslock serializes the two accesses.
+
+某些 xv6 自旋锁保护的数据会被线程和中断处理程序共同使用。例如，时钟中断处理程序 `clockintr` 可能会在内核线程于 `sys_pause` (3836) 中读取 `ticks` 的同时增加 `ticks` (3482) 的值。锁 `tickslock` 将这两次访问串行化。
+
+The interaction of spinlocks and interrupts raises a potential danger. Suppose sys_pause holds tickslock, and its CPU is interrupted by a timer interrupt. clockintr would try to acquire tickslock, see it was held, and wait for it to be released. In this situation, tickslock will never be released: only sys_pause can release it, but sys_pause will not continue running until clock intr returns. So the CPU will deadlock, and any code that needs either lock will also freeze.
+
+自旋锁与中断的交互会带来潜在的危险。假设 `sys_pause` 持有 `tickslock`，而其所在的 CPU 被时钟中断。`clockintr` 将尝试获取 `tickslock`，发现它已被占用，于是等待其释放。在这种情况下，`tickslock` 永远不会被释放：只有 `sys_pause` 能释放它，但 `sys_pause` 在 `clockintr` 返回之前不会继续运行。因此，该 CPU 将发生死锁，任何需要这两个锁中任意一个的代码也将被冻结。
+
+To avoid this situation, if a spinlock is used by an interrupt handler, a CPU must never hold that lock with interrupts enabled. Xv6 is more conservative: when a CPU acquires any lock, xv6 always disables interrupts on that CPU. Interrupts may still occur on other CPUs, so an interrupt’s acquire can wait for a thread to release a spinlock; just not on the same CPU.
+
+为了避免这种情况，如果一个自旋锁被中断处理程序使用，那么 CPU 在持有该锁时绝不能开启中断。Xv6 的做法更为保守：当一个 CPU 获取任何锁时，xv6 总是会禁用该 CPU 上的中断。中断仍可能在其他 CPU 上发生，因此中断处理程序中的 `acquire` 可以等待线程释放自旋锁，只要不是在同一个 CPU 上即可。
+
+Xv6 re-enables interrupts when a CPU holds no spinlocks; it must do a little book-keeping to cope with nested critical sections. acquire calls push_off (1355) and release calls pop_off (1369) to track the nesting level of locks on the current CPU. When that count reaches zero, pop_off restores the interrupt enable state that existed at the start of the outermost critical section. The intr_off and intr_on functions execute RISC-V instructions to disable and enable interrupts, respectively.
+
+当 CPU 不持有任何自旋锁时，Xv6 会重新启用中断；它必须进行一些记账工作以应对嵌套的临界区。acquire 调用 push_off (1355)，而 release 调用 pop_off (1369)，以跟踪当前 CPU 上锁的嵌套层级。当该计数达到零时，pop_off 会恢复到最外层临界区开始时存在的中断启用状态。intr_off 和 intr_on 函数分别执行 RISC-V 指令来禁用和启用中断。
+
+It is important that acquire call push_off strictly before setting lk->locked (1277). If the two were reversed, there would be a brief window when the lock was held with interrupts enabled, and an unfortunately timed interrupt would deadlock the system. Similarly, it is important that release call pop_off only after releasing the lock (1321).
+
+至关重要的一点是，acquire 必须严格在设置 lk->locked (1277) 之前调用 push_off。如果两者顺序颠倒，就会出现一个短暂的窗口期，此时锁已被持有但中断仍处于启用状态，一个时机不幸的中断将会导致系统死锁。同样地，release 必须在释放锁 (1321) 之后才调用 pop_off。
+
+## 7.6 Instruction and memory ordering
+
+It is natural to think of programs executing in the order in which source code statements appear. That’s a reasonable mental model for single-threaded code, but is incorrect when multiple threads interact through shared memory [2, 4]. One reason is that compilers emit load and store instructions in orders different from those implied by the source code, and may entirely omit them (for example by caching data in registers). Another reason is that the CPU may execute instructions out of order to increase performance. For example, a CPU may notice that in a serial sequence of instructions A and B are not dependent on each other. The CPU may start instruction B first, either because its inputs are ready before A’s inputs, or in order to overlap execution of A and B.
+
+人们很自然地认为程序是按照源代码语句出现的顺序执行的。对于单线程代码来说，这是一个合理的思维模型，但当多个线程通过共享内存进行交互时，这个模型就是错误的 [2, 4]。原因之一是编译器生成的加载（load）和存储（store）指令顺序与源代码所暗示的顺序不同，甚至可能完全省略它们（例如通过将数据缓存在寄存器中）。另一个原因是 CPU 可能会为了提高性能而乱序执行指令。例如，CPU 可能会注意到在一段串行指令序列中，指令 A 和 B 互不依赖。CPU 可能会先启动指令 B，原因可能是 B 的输入在 A 之前就已就绪，或者是为了让 A 和 B 的执行重叠。
+
+As an example of what could go wrong, in this code for push, it would be a disaster if the compiler or CPU moved the store corresponding to line 4 to a point after the release on line 6 :
+
+作为一个可能出错的例子，在下面这段 push 的代码中，如果编译器或 CPU 将第 4 行对应的存储操作移动到第 6 行的 release 之后，那将是一场灾难：
+
+```c
+l = malloc(sizeof *l);
+l->data = data;
+acquire(&listlock);
+l->next = list;
+list = l;
+release(&listlock);
+```
+
+If such a re-ordering occurred, there would be a window during which another CPU could acquire the lock and observe the updated list, but see an uninitialized list->next.
+
+如果发生了这种重排序，就会出现一个时间窗口，在此期间另一个 CPU 可能会获取锁并观察到更新后的列表，但看到的却是一个未初始化的 `list->next`。
+
+The good news is that compilers and CPUs help concurrent programmers by following a set of rules called the memory model, and by providing some primitives to help programmers control re-ordering.
+
+好消息是，编译器和 CPU 通过遵循一套被称为内存模型（memory model）的规则，并提供一些帮助程序员控制重排序的原语，来协助并发编程。
+
+To tell the hardware and compiler not to re-order, xv6 uses __sync_synchronize() in both acquire (1271) and release (1302). __sync_synchronize() is a memory barrier: it tells the compiler and CPU to not reorder loads or stores across the barrier. The barriers in xv6’s acquire and release force order in almost all cases where it matters, since xv6 uses locks around accesses to shared data. Chapter 11 discusses a few exceptions.
+
+为了告知硬件和编译器不要进行重排序，xv6 在 `acquire` (1271) 和 `release` (1302) 中都使用了 `__sync_synchronize()`。`__sync_synchronize()` 是一个内存屏障（memory barrier）：它告诉编译器和 CPU 不要跨越屏障对加载（load）或存储（store）指令进行重排序。xv6 中 `acquire`和 `release` 里的屏障在几乎所有关键情况下都强制执行了顺序，因为 xv6 在访问共享数据时都会使用锁。第 11 章讨论了一些例外情况。
+
+## 7.7 Sleep locks
+
+Sometimes xv6 needs to hold a lock for a long time. For example, the file system (Chapter 10) keeps a file locked while reading and writing its content on the disk, and these disk operations can take tens of milliseconds. Holding a spinlock that long would lead to waste if another process wanted to acquire it, since the acquiring process would waste CPU for a long time while spinning. Another drawback of spinlocks is that a process cannot yield the CPU while retaining a spinlock; we’d like to do this so that other processes can use the CPU while the process with the lock waits for the disk. Yielding while holding a spinlock is illegal because it might lead to deadlock if a second thread then tried to acquire the spinlock; since acquire doesn’t yield the CPU, the second thread’s spinning might prevent the first thread from running and releasing the lock. Yielding while holding a lock would also violate the requirement that interrupts must be off while a spinlock is held. Thus we’d like a type of lock that yields the CPU while waiting to acquire, and allows yields (and interrupts) while the lock is held.
+
+有时 xv6 需要长时间持有锁。例如，文件系统（第 10 章）在磁盘上读写文件内容时会保持文件锁定，而这些磁盘操作可能耗时数十毫秒。如果另一个进程想要获取该锁，长时间持有自旋锁（spinlock）会导致浪费，因为获取进程在自旋时会长时间浪费 CPU。自旋锁的另一个缺点是进程在持有自旋锁时不能主动让出（yield）CPU；我们希望进程能做到这一点，以便在持有锁的进程等待磁盘时，其他进程可以使用 CPU。在持有自旋锁时让出 CPU 是非法操作，因为如果第二个线程随后尝试获取该自旋锁，可能会导致死锁；由于 acquire 不会主动让出 CPU，第二个线程的自旋可能会阻止第一个线程运行并释放锁。在持有锁时让出 CPU 还会违反“持有自旋锁期间必须关闭中断”的要求。因此，我们需要一种在等待获取锁时能让出 CPU，并且在持有锁期间允许让出 CPU（和中断）的锁类型。
+
+Xv6 provides such locks in the form of sleep-locks. acquiresleep (4471) yields the CPU while waiting, using techniques that will be explained in Chapter 9. At a high level, a sleep-lock has a locked field that is protected by a spinlock, and acquiresleep 's call to sleep atomically yields the CPU and releases the spinlock. The result is that other threads can execute while acquiresleep waits.
+
+Xv6 以睡眠锁（sleep-locks）的形式提供了这种锁。acquiresleep (4471) 在等待时会利用第 9 章将解释的技术让出 CPU。从高层级来看，睡眠锁有一个由自旋锁保护的 locked 字段，而 acquiresleep 对 sleep 的调用会原子性地让出 CPU 并释放自旋锁。结果是，在 acquiresleep 等待期间，其他线程可以执行。
+
+Because sleep-locks leave interrupts enabled, they cannot be used in interrupt handlers. Because acquiresleep may yield the CPU, sleep-locks cannot be used inside spinlock critical sections (though spinlocks can be used inside sleep-lock critical sections).
+
+由于睡眠锁保持中断开启，它们不能在中断处理程序中使用。由于 acquiresleep 可能会让出 CPU，睡眠锁不能在自旋锁临界区内使用（尽管自旋锁可以在睡眠锁临界区内使用）。
+
+Spin-locks are best suited to short critical sections, since waiting for them wastes CPU time; sleep-locks work well for lengthy operations.
+
+自旋锁最适合短小的临界区，因为等待它们会浪费 CPU 时间；睡眠锁则非常适合耗时较长的操作。
+
+## 7.8 Real world
+
+Programming with locks remains challenging despite years of research into concurrency primitives and parallelism. It is often best to conceal locks within higher-level constructs like synchronized queues, although xv6 does not do this. If you program with locks, it is wise to use a tool that attempts to identify races, because it is easy to miss an invariant that requires a lock.
+
+尽管对并发原语和并行性进行了多年的研究，使用锁进行编程仍然具有挑战性。通常最好将锁隐藏在同步队列等更高级的结构中，尽管 xv6 并没有这样做。如果你使用锁进行编程，明智的做法是使用能够尝试识别竞态的工具，因为很容易遗漏某个需要锁保护的不变量。
+
+Most operating systems support POSIX threads (Pthreads), which allow a user process to have several threads running concurrently on different CPUs. Pthreads has support for user-level locks, barriers, etc. Pthreads also allows a programmer to optionally specify that a lock should be reentrant.
+
+大多数操作系统支持 POSIX 线程（Pthreads），它允许一个用户进程拥有多个在不同 CPU 上并发运行的线程。Pthreads 支持用户级锁、屏障（barriers）等。Pthreads 还允许程序员选择性地指定某个锁应该是可重入的。
+
+Supporting Pthreads at user level requires support from the operating system. For example, it should be the case that if one pthread blocks in a system call, another pthread of the same process should be able to run on that CPU. As another example, if a pthread changes its process’s address space (e.g., maps or unmaps memory), the kernel must arrange that other CPUs that run threads of the same process update their hardware page tables to reflect the change in the address space.
+
+在用户层支持 Pthreads 需要操作系统的支持。例如，如果一个 pthread 在系统调用中阻塞，同一进程的另一个 pthread 应该能够在该 CPU 上运行。再比如，如果一个 pthread 更改了其进程的地址空间（例如，映射或取消映射内存），内核必须安排运行同一进程线程的其他 CPU 更新其硬件页表，以反映地址空间的变化。
+
+It is possible to implement locks without atomic instructions [10], but it is expensive, so most operating systems use atomic instructions.
+
+不使用原子指令来实现锁是可能的 [10]，但其开销很大，因此大多数操作系统都使用原子指令。
+
+Locks can be expensive if many CPUs try to acquire the same lock at the same time. If one CPU has a lock cached in its local cache, and another CPU must acquire the lock, then the atomic instruction to update the cache line that holds the lock must move the line from the one CPU’s cache to the other CPU’s cache, and perhaps invalidate any other copies of the cache line. Fetching a cache line from another CPU’s cache can be orders of magnitude more expensive than fetching a line from a local cache.
+
+如果许多 CPU 尝试同时获取同一个锁，锁的开销可能会非常昂贵。如果一个 CPU 在其本地缓存中缓存了一个锁，而另一个 CPU 必须获取该锁，那么更新持有该锁的缓存行的原子指令必须将该行从一个 CPU 的缓存移动到另一个 CPU 的缓存，并可能使该缓存行的任何其他副本失效。从另一个 CPU 的缓存中获取缓存行可能比从本地缓存中获取缓存行要昂贵几个数量级。
+
+To avoid the expenses associated with locks, many operating systems use lock-free data structures and algorithms [6, 12]. For example, it is possible to implement a linked list like the one in the beginning of the chapter that requires no locks during list searches, and one atomic instruction to insert an item in a list. Lock-free programming is more complicated, however, than programming locks; for example, one must worry about instruction and memory reordering. Programming with locks is already hard, so xv6 avoids the additional complexity of lock-free programming.
+
+为了避免与锁相关的开销，许多操作系统使用无锁（lock-free）的数据结构和算法 [6, 12]。例如，可以实现一个类似于本章开头提到的链表，它在搜索列表时不需要锁，并且只需一条原子指令即可在列表中插入一项。然而，无锁编程比锁编程更复杂；例如，必须考虑指令和内存重排的问题。由于使用锁进行编程已经很困难，因此 xv6 避免了无锁编程带来的额外复杂性。
+
+## 7.9 Exercises
+
+1. Comment out the calls to acquire and release in kalloc (3027). This seems like it should cause problems for kernel code that calls kalloc; what symptoms do you expect to see? When you run xv6, do you see these symptoms? How about when running usertests? If you don’t see a problem, why not? See if you can provoke a problem by inserting dummy loops into the critical section of kalloc.
+   注释掉 kalloc (3027) 中对 acquire 和 release 的调用。这似乎会对调用 kalloc 的内核代码造成问题；你预期会看到什么症状？当你运行 xv6 时，是否看到了这些症状？运行 usertests 时呢？如果你没有发现问题，那是为什么？看看你是否能通过在 kalloc 的临界区插入空循环来诱发问题。
+2. Suppose that you instead commented out the locking in kfree (after restoring locking in kalloc). What might now go wrong? Is lack of locks in kfree less harmful than in kalloc?
+   假设你转而注释掉 kfree 中的锁（在恢复 kalloc 中的锁之后）。现在可能会出什么问题？kfree 中缺少锁的危害是否比 kalloc 中更小？
+3. If two CPUs call kalloc at the same time, one will have to wait for the other, which is bad for performance. Modify kalloc.c to have more parallelism, so that simultaneous calls to kalloc from different CPUs can proceed without waiting for each other.
+   如果两个 CPU 同时调用 kalloc，其中一个必须等待另一个，这对性能不利。修改 kalloc.c 以提高并行性，使得来自不同 CPU 的并发 kalloc 调用可以无需相互等待而继续进行。
+4. Write a parallel program using POSIX threads, which is supported on most operating systems. For example, implement a parallel hash table and measure if the number of puts/gets scales with increasing number of CPUs.
+   使用 POSIX 线程（大多数操作系统都支持）编写一个并行程序。例如，实现一个并行哈希表，并测量插入（put）和获取（get）操作的数量是否随 CPU 核心数的增加而线性扩展。
+5. Implement a subset of Pthreads in xv6. That is, implement a user-level thread library so that a user process can have more than 1 thread and arrange that these threads can run in parallel on different CPUs. Come up with a design that correctly handles a thread making a blocking system call and changing its shared address space.
+   在 xv6 中实现 Pthreads 的一个子集。即实现一个用户级线程库，使一个用户进程可以拥有多个线程，并安排这些线程在不同的 CPU 上并行运行。设计方案需要能够正确处理线程发起阻塞系统调用以及更改其共享地址空间的情况。
+
