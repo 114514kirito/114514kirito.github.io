@@ -38,6 +38,8 @@ The xv6 file system implementation is organized in seven layers, shown in Figure
 
 xv6 文件系统的实现分为七层，如图 10.1 所示。磁盘层（disk layer）负责读取和写入 virtio 硬盘上的数据块。缓冲池层（buffer cache layer）缓存磁盘块并同步对它们的访问，确保每次只有一个内核进程可以修改存储在特定数据块中的数据。日志层（logging layer）允许更高层将对多个块的更新封装在一个事务中，并确保在发生崩溃时这些块能够被原子地更新（即要么全部更新，要么都不更新）。索引节点层（inode layer）提供单个文件，每个文件
 
+![Figure 10.1: Layers of the xv6 file system.](image/fslayer.png)
+
 | File descriptor |
 | Pathname |
 | Directory |
@@ -57,6 +59,8 @@ Disk hardware traditionally presents the data on the disk as a numbered sequence
 The file system must have a plan for where it stores inodes and content blocks on the disk. To do so, xv6 divides the disk into several sections, as Figure 10.2 shows. The file system does not use block 0 (it holds the boot sector). Block 1 is called the superblock; it contains metadata about the file system (the file system size in blocks, the number of data blocks, the number of inodes, and the number of blocks in the log). Blocks starting at 2 hold the log. After the log are the inodes, with multiple inodes per block. After those come bitmap blocks tracking which data blocks are in use. The remaining blocks are data blocks; each is either marked free in the bitmap block, or holds content for a file or directory. The superblock is filled in by a separate program, called mkfs, which builds an initial file system.
 
 文件系统必须对在磁盘上存储 i-节点和内容块的位置有一个规划。为此，xv6 将磁盘分为几个部分，如图 10.2 所示。文件系统不使用块 0（它保存引导扇区）。块 1 被称为超级块（superblock）；它包含有关文件系统的元数据（以块为单位的文件系统大小、数据块的数量、i-节点的数量以及日志中的块数）。从块 2 开始的块保存日志。日志之后是 i-节点，每个块包含多个 i-节点。再之后是位图块，用于跟踪哪些数据块正在使用。剩余的块是数据块；每个数据块要么在位图块中被标记为空闲，要么保存文件或目录的内容。超级块由一个名为 mkfs 的独立程序填充，该程序负责构建初始文件系统。
+
+![Figure 10.2: Structure of the xv6 file system.](image/fslayout.png)
 
 The rest of this chapter discusses each layer, starting with the buffer cache. Look out for situations where well-chosen abstractions at lower layers ease the design of higher ones.
 
@@ -281,6 +285,8 @@ Xv6 没有实现这两种方案，这意味着某些 inode 可能会在磁盘上
 The on-disk inode structure, struct dinode, contains a size and an array of block numbers (see Figure 10.3. The inode data is found in the blocks listed in the dinode 's addrs array. The first
 
 磁盘上的 inode 结构体 `struct dinode` 包含一个大小字段和一个块号数组（见图 10.3）。Inode 的数据存储在 `dinode` 的 `addrs` 数组所列出的块中。前
+
+![Figure 10.3: The representation of a file on disk.](image/inode.png)
 
 NDIRECT blocks of data are listed in the first NDIRECT entries in the array; these blocks are called direct blocks. The next NINDIRECT blocks of data are listed not in the inode but in a data block called the indirect block. The last entry in the addrs array gives the address of the indirect block. Thus the first 12 kB (NDIRECT x BSIZE) bytes of a file can be loaded from blocks listed in the inode, while the next 256 kB (NINDIRECT x BSIZE) bytes can only be loaded after consulting the indirect block. This is a good on-disk representation but a complex one for clients. The function bmap manages the representation so that higher-level routines, such as readi and writei, which we will see shortly, do not need to manage this complexity. bmap returns the disk block number of the bn’th data block for the inode ip. If ip does not have such a block yet, bmap allocates one.
 

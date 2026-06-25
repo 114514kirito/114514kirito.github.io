@@ -27,6 +27,8 @@ As Figure 1.1 shows, xv6 takes the traditional form of a kernel, a special progr
 
 如图 1.1 所示，xv6 采用了传统的内核形式，内核是一个为运行中的程序提供服务的特殊程序。每个运行中的程序被称为进程，它拥有包含指令、数据和栈的内存。指令实现程序的计算；数据是计算所作用的变量；栈则组织程序的函数调用。一台给定的计算机通常有许多个进程，但只有一个内核。
 
+![Figure 1.1: A kernel and two user processes.](image/os.png)
+
 When a process needs to invoke a kernel service, it invokes a system call, one of the calls in the operating system’s interface. The system call enters the kernel; the kernel performs the service and returns. Thus a process alternates between executing in user space and kernel space.
 
 当进程需要调用内核服务时，它会发起系统调用，这是操作系统接口中的一种调用。系统调用进入内核；内核执行服务并返回。因此，进程在用户空间和内核空间的执行之间交替切换。

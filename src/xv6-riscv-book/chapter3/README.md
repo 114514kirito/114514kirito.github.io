@@ -23,7 +23,9 @@ As a reminder, RISC-V instructions (both user and kernel) manipulate virtual add
 
 Xv6 uses RISC-V’s Sv39 mode, which means that only the bottom 39 bits of a 64-bit virtual address are used; the top 25 bits are not used. In this Sv39 configuration, a RISC-V page table is logically an array of page table entries (PTEs). Each PTE contains a 44-bit physical page number (PPN) and some flags. The paging hardware translates a virtual address by using the top 27 bits of the 39 bits to index into the page table to find a PTE, and making a 56 -bit physical address whose top 44 bits come from the PPN in the PTE and whose bottom 12 bits are copied from the original virtual address. Figure 3.1 shows this process with a logical view of the page table as a simple array of PTEs (the RISC-V page table is actually a tree; see Figure 3.2 for a fuller story). A page table gives the operating system control over virtual-to-physical address translations at the granularity of aligned chunks of bytes. Such a chunk is called a page.
 
-Xv6 使用 RISC-V 的 Sv39 模式，这意味着在 64 位虚拟地址中仅使用低 39 位；高 25 位不被使用。在这种 Sv39 配置下，RISC-V 页表在逻辑上是一个包含 个页表项（PTE）的数组。每个 PTE 包含一个 44 位的物理页号（PPN）和一些标志位。分页硬件在转换虚拟地址时，利用 39 位中的高 27 位作为索引在页表中查找 PTE，并生成一个 56 位的物理地址，其高 44 位来自 PTE 中的 PPN，低 12 位则复制自原始虚拟地址。图 3.1 展示了这一过程，并将页表逻辑地视为一个简单的 PTE 数组（实际上 RISC-V 的页表是一个树状结构；详见图 3.2）。页表使操作系统能够以对齐的 字节块为粒度，控制虚拟地址到物理地址的转换。这样的块被称为一个“页”（page）。
+Xv6 使用 RISC-V 的 Sv39 模式，这意味着在 64 位虚拟地址中仅使用低 39 位；高 25 位不被使用。在这种 Sv39 配置下，RISC-V 页表在逻辑上是一个包含 个页表项（PTE）的数组。每个 PTE 包含一个 44 位的物理页号（PPN）和一些标志位。分页硬件在转换虚拟地址时，利用 39 位中的高 27 位作为索引在页表中查找 PTE，并生成一个 56 位的物理地址，其高 44 位来自 PTE 中的 PPN，低 12 位则复制自原始虚拟地址。图 3.1 展示了这一过程，并将页表逻辑地视为一个简单的 PTE 数组（实际上 RISC-V 的页表是一个树状结构；详见图 3.2）。页表使操作系统能够以对齐的 字节块为粒度，控制虚拟地址到物理地址的转换。这样的块被称为一个”页”（page）。
+
+![Figure 3.1: RISC-V virtual and physical addresses, with a simplified logical page table.](image/riscv_address.png)
 
 RISC-V’s design leaves room for expansion of both virtual and physical addresses. If more virtual address space is needed, RISC-V supports an Sv48 mode, with 48-bit virtual addresses [3]. Physical addresses also have room for growth: there is room in the PTE format for the physical
 
@@ -37,6 +39,8 @@ RISC-V 的设计者根据技术预测选择了地址大小。 字节等于 ，�
 As Figure 3.2 shows, a RISC-V CPU page table is stored in physical memory as a three-level tree. The root of the tree is a 4096-byte page-table page that contains 512 PTEs, which contain the physical addresses for page-table pages in the next level of the tree. Each of those pages contains 512 PTEs for the final level in the tree. The paging hardware uses the top 9 bits of the 27 bits to select a PTE in the root page-table page, the middle 9 bits to select a PTE in a page-table page in the next level of the tree, and the bottom 9 bits to select the final PTE. (In Sv48 RISC-V a page table has four levels, and bits 39 through 47 of a virtual address index into the top-level.)
 
 如图 3.2 所示，RISC-V CPU 的页表以三级树状结构存储在物理内存中。树的根节点是一个 4096 字节的页表页，包含 512 个页表项（PTE），这些 PTE 包含了树中下一级页表页的物理地址。下一级的每个页表页同样包含 512 个 PTE，指向树的最后一级。分页硬件利用 27 位虚拟页号中的高 9 位在根页表页中选择一个 PTE，中间 9 位在下一级页表页中选择一个 PTE，最后 9 位选择最终的 PTE。（在 Sv48 RISC-V 中，页表共有四级，虚拟地址的第 39 到 47 位用于索引最高级页表。）
+
+![Figure 3.2: RISC-V address translation details.](image/riscv_pagetable.png)
 
 If any of the three PTEs required to translate an address is not present, the paging hardware raises a page-fault exception, leaving it up to the kernel to handle the page fault (see Chapters 4 and (5).
 
@@ -73,6 +77,8 @@ A few notes about terms used in this book. Physical memory refers to storage cel
 When it starts, xv6 creates a single page table describing the kernel’s address space. The kernel configures the layout of its address space to give itself access to physical memory and various hardware resources at predictable virtual addresses. Figure 3.3 shows how this layout maps kernel virtual addresses to physical addresses. The file (0200) declares the constants for xv6’s kernel memory layout.
 
 在启动时，xv6 会创建一个描述内核地址空间的页表。内核通过配置其地址空间的布局，使其能够访问物理内存和各种硬件资源位于可预测的虚拟地址。图 3.3 展示了这种布局如何将内核虚拟地址映射到物理地址。文件 (0200) 声明了 xv6 内核内存布局的常量。
+
+![Figure 3.3: xv6's kernel address space and RISC-V physical address space.](image/xv6_layout.png)
 
 QEMU simulates a computer that includes RAM (physical memory) starting at physical address and continuing through at least , which xv6 calls PHYSTOP. The QEMU simulation also includes I/O devices such as a disk interface. QEMU exposes the device interfaces to software as memory-mapped control registers that sit below in the physical address space. The kernel can interact with the devices by reading/writing these special physical addresses; such reads and writes communicate with the device hardware rather than with RAM. Chapter 4 explains how xv6 interacts with devices.
 
@@ -166,6 +172,8 @@ kfree 函数 (3005) 首先将待释放内存中的每个字节设置为值 1。�
 Each process has its own page table, and when xv6 switches between processes, it also changes page tables. Figure 3.4 shows a process’s address space in more detail than Figure 2.3. A process’s user address space starts at zero and in principle ends at MAXVA ( )(0896), though in practice only a small fraction of this is mapped to physical memory.
 
 每个进程都有自己的页表，当 xv6 在进程之间切换时，也会随之切换页表。图 3.4 比图 2.3 更详细地展示了进程的地址空间。进程的用户地址空间从零开始，理论上止于 MAXVA ( )(0896)，但在实践中，其中只有一小部分被映射到了物理内存。
+
+![Figure 3.4: A process’s user address space, with its initial stack.](image/processlayout.png)
 
 A process’s address space consists of pages that contain the text of the program (which xv6 maps with the permissions PTE_R, PTE_X, and PTE_U), pages that contain the pre-initialized data of the program, a page for the stack, and pages for the heap. Xv6 maps the data, stack, and heap with the permissions PTE_R, PTE_W, and PTE_U.
 

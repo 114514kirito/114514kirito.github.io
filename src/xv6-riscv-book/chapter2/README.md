@@ -100,6 +100,8 @@ Figure 2.1 illustrates this microkernel design. In the figure, the file system r
 
 图 2.1 展示了这种微内核设计。在图中，文件系统作为一个用户级服务器进程运行。为了允许应用程序与文件服务器交互，内核提供了一种进程间通信机制，用于将消息从一个用户模式进程发送到另一个。例如，如果像 shell 这样的应用程序想要读取或写入文件，它会向文件服务器发送一条消息并等待响应。
 
+![Figure 2.1: A microkernel with a file-system server](image/mkernel.png)
+
 In a microkernel, the kernel interface consists of a few low-level functions for starting applications, sending messages, accessing device hardware, etc. This organization allows the kernel to be relatively simple, as most of the operating system resides in user-level servers.
 
 在微内核架构中，内核接口由少数底层函数组成，用于启动应用程序、发送消息、访问设备硬件等。这种组织方式使内核能够保持相对简单，因为操作系统的大部分功能都驻留在用户级服务器中。
@@ -180,7 +182,9 @@ xv6 使用页表（由硬件实现）为每个进程提供其独立的地址空�
 
 * [ ] Xv6 maintains a separate page table for each process that defines that process’s address space. As illustrated in Figure 2.3, an address space includes the process’s user memory starting at virtual address zero. Instructions come first, followed by global variables, then the stack, and finally a “heap” area (for malloc) that the process can expand as needed. There are a number of factors that limit the maximum size of a process’s address space: pointers on the RISC-V are 64 bits wide; the hardware uses only the low 39 bits when looking up virtual addresses in page tables; and xv6 uses only 38 of those 39 bits. Thus, the maximum address is x3fffffffff, which is MAXVA (0899). At the top of the address space xv6 places a trampoline page ( 4096 bytes) and a trapframe page. Xv6 uses these two pages to transition into the kernel and back; the trampoline page contains the code to transition in and out of the kernel, and the trapframe is where the kernel saves the process’s user registers, as Chapter 4 explains.
 
-Xv6 为每个进程维护一个单独的页表，用以定义该进程的地址空间。如图 2.3 所示，地址空间包括从虚拟地址零开始的进程用户内存。首先是指令，其次是全局变量，然后是栈，最后是一个“堆”区（用于 malloc），进程可以根据需要对其进行扩展。有几个因素限制了进程地址空间的最大容量：RISC-V 上的指针宽度为 64 位；硬件在页表中查找虚拟地址时仅使用低 39 位；而 xv6 仅使用了这 39 位中的 38 位。因此，最大地址是 x3fffffffff，即 MAXVA (0899)。在地址空间的顶部，xv6 放置了一个 trampoline（跳板）页（4096 字节）和一个 trapframe（中断帧）页。Xv6 利用这两个页进入内核并返回；trampoline 页包含进出内核的代码，而 trapframe 则是内核保存进程用户寄存器的地方，详见第 4 章。
+Xv6 为每个进程维护一个单独的页表，用以定义该进程的地址空间。如图 2.3 所示，地址空间包括从虚拟地址零开始的进程用户内存。首先是指令，其次是全局变量，然后是栈，最后是一个”堆”区（用于 malloc），进程可以根据需要对其进行扩展。有几个因素限制了进程地址空间的最大容量：RISC-V 上的指针宽度为 64 位；硬件在页表中查找虚拟地址时仅使用低 39 位；而 xv6 仅使用了这 39 位中的 38 位。因此，最大地址是 x3fffffffff，即 MAXVA (0899)。在地址空间的顶部，xv6 放置了一个 trampoline（跳板）页（4096 字节）和一个 trapframe（中断帧）页。Xv6 利用这两个页进入内核并返回；trampoline 页包含进出内核的代码，而 trapframe 则是内核保存进程用户寄存器的地方，详见第 4 章。
+
+![Figure 2.3: Layout of a process's virtual address space](image/as.png)
 
 The xv6 kernel maintains many pieces of state for each process, which it gathers into a struct proc (2034). A process’s most important pieces of kernel state are its page table, its kernel stack, and its run state. We’ll use the notation to refer to elements of the proc structure; for example, pagetable is a pointer to the process’s page table.
 

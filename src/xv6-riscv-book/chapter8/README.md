@@ -44,6 +44,8 @@ At a broader scope, the steps involved in switching from one user process to ano
 
 从更宏观的角度来看，图 8.1 展示了从一个用户进程切换到另一个用户进程所涉及的步骤：从旧进程的用户空间陷阱（系统调用或中断）进入其内核线程，上下文切换到当前 CPU 的调度器线程，上下文切换到新进程的内核线程，最后陷阱返回到用户级进程。
 
+![Figure 8.1: Switching from one user process to another.](image/switch.png)
+
 ## 8.3 Code: Context switching
 
 The function swtch() in kernel/swtch. S contains the heart of thread context switching: it saves the switched-from thread’s CPU registers, and restores the previously-saved registers of the switched-to thread. The basic reason this is sufficient is that a thread’s state consist of data in memory (e.g. its stack) plus its CPU registers; thread memory need not saved and restored because different threads keep their data in different areas of RAM; but the CPU has only one set of registers so they must be switched (saved and restored) between threads.
